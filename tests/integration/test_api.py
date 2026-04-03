@@ -153,26 +153,31 @@ class TestRunStatusEndpoints:
         response = self.client.get("/runs")
         assert response.status_code == 200
         data = response.json()
-        assert "total" in data
-        assert "runs" in data
-        assert isinstance(data["runs"], list)
+        assert data["success"] is True
+        assert "meta" in data
+        assert "total" in data["meta"]
+        assert "data" in data
+        assert isinstance(data["data"], list)
 
     def test_list_runs_with_filters(self):
         """测试带过滤条件的列表查询"""
         response = self.client.get("/runs?status=completed&workflow_type=idea&limit=10")
         assert response.status_code == 200
         data = response.json()
-        assert "total" in data
-        assert "runs" in data
+        assert data["success"] is True
+        assert "meta" in data
+        assert "data" in data
 
     def test_get_stats(self):
         """测试获取统计信息"""
         response = self.client.get("/stats")
         assert response.status_code == 200
         data = response.json()
-        assert "total" in data
-        assert "by_status" in data
-        assert "by_type" in data
+        assert data["success"] is True
+        assert "data" in data
+        assert "total" in data["data"]
+        assert "by_status" in data["data"]
+        assert "by_type" in data["data"]
 
 
 class TestRunManagementEndpoints:

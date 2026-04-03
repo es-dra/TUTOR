@@ -157,6 +157,12 @@ scheduler_results/
 custom_results/
 *.log
 
+# Frontend
+web/node_modules/
+web/build/
+web/dist/
+
+
 # Archive (external projects)
 archive/
 

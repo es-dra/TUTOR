@@ -1,6 +1,29 @@
 // TUTOR API 客户端
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8080';
 
+/**
+ * 解析统一 API 响应格式
+ * @param {Response} res - fetch Response 对象
+ * @param {string} operationName - 操作名称，用于错误信息
+ * @returns {Promise<any>} 解析后的数据
+ */
+async function parseResponse(res, operationName = '操作') {
+  const data = await res.json();
+  if (!res.ok) {
+    const errorMsg = data?.error?.message || `${operationName}失败`;
+    throw new Error(errorMsg);
+  }
+  // 兼容新旧格式：检查是否是新的 envelope 格式
+  if (data.success !== undefined && data.data !== undefined) {
+    if (!data.success) {
+      throw new Error(data.error?.message || `${operationName}失败`);
+    }
+    return data;
+  }
+  // 旧格式直接返回
+  return data;
+}
+
 export const api = {
   // 健康检查
   async health() {
@@ -19,15 +42,15 @@ export const api = {
         config
       })
     });
-    if (!res.ok) throw new Error('启动工作流失败');
-    return res.json();
+    return parseResponse(res, '启动工作流');
   },
 
   // 获取运行状态
   async getRunStatus(runId) {
     const res = await fetch(`${API_BASE}/runs/${runId}`);
-    if (!res.ok) throw new Error('获取状态失败');
-    return res.json();
+    const data = await parseResponse(res, '获取状态');
+    // 兼容 envelope 格式
+    return data.data || data;
   },
 
   // 列出所有运行
@@ -41,8 +64,9 @@ export const api = {
     if (params.toString()) url += `?${params.toString()}`;
 
     const res = await fetch(url);
-    if (!res.ok) throw new Error('获取列表失败');
-    return res.json();
+    const data = await parseResponse(res, '获取列表');
+    // 返回 envelope 格式的完整响应，让调用方处理分页
+    return data;
   },
 
   // 删除运行
@@ -50,8 +74,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/runs/${runId}`, {
       method: 'DELETE'
     });
-    if (!res.ok) throw new Error('删除失败');
-    return res.json();
+    return parseResponse(res, '删除');
   },
 
   // 更新运行标签（归档/收藏）
@@ -61,8 +84,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tags })
     });
-    if (!res.ok) throw new Error('更新标签失败');
-    return res.json();
+    return parseResponse(res, '更新标签');
   },
 
   // 获取SSE事件流
@@ -170,8 +192,8 @@ export const api = {
   // 统计
   async getStats() {
     const res = await fetch(`${API_BASE}/stats`);
-    if (!res.ok) throw new Error('获取统计失败');
-    return res.json();
+    const data = await parseResponse(res, '获取统计');
+    return data.data || data;
   }
 };
 

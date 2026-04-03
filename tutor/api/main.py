@@ -25,6 +25,12 @@ except ImportError:
     StreamingResponse = None
     Fast = None
 
+from tutor.api.models import (
+    success_response,
+    error_response,
+    paginated_response,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -388,13 +394,13 @@ def create_app() -> "FastAPI":
             message=f"Workflow '{request.workflow_type}' started. Run ID: {run_id}",
         )
 
-    @app.get("/runs/{run_id}", response_model=RunStatusResponse, tags=["workflow"])
+    @app.get("/runs/{run_id}", tags=["workflow"])
     async def get_run_status(run_id: str):
         """查询运行状态"""
         run = run_storage.get_run(run_id)
         if not run:
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-        return RunStatusResponse(**run)
+        return success_response(data=RunStatusResponse(**run).model_dump())
 
     @app.get("/runs", tags=["workflow"])
     async def list_runs(
@@ -410,25 +416,31 @@ def create_app() -> "FastAPI":
             limit=limit,
             offset=offset,
         )
-        return result
+        return paginated_response(
+            items=result.get("runs", []),
+            total=result.get("total", 0),
+            limit=limit,
+            offset=offset,
+        )
 
     @app.get("/stats", tags=["workflow"])
     async def get_stats():
         """获取工作流运行统计"""
-        return run_storage.get_stats()
+        stats = run_storage.get_stats()
+        return success_response(data=stats)
 
     # 注意：这些特定路径必须在 /runs/{run_id} 之前定义，否则会被当作 run_id
     @app.get("/runs/list/archived", tags=["workflow"])
     async def list_archived_runs(limit: int = 100, offset: int = 0):
         """列出已归档的工作流"""
         runs = run_storage.list_runs_by_tags(["archived"], match_all=False, limit=limit, offset=offset)
-        return {"total": len(runs), "runs": runs}
+        return paginated_response(items=runs, total=len(runs), limit=limit, offset=offset)
 
     @app.get("/runs/list/favorites", tags=["workflow"])
     async def list_favorite_runs(limit: int = 100, offset: int = 0):
         """列出收藏的工作流"""
         runs = run_storage.list_runs_by_tags(["favorite"], match_all=False, limit=limit, offset=offset)
-        return {"total": len(runs), "runs": runs}
+        return paginated_response(items=runs, total=len(runs), limit=limit, offset=offset)
 
     @app.delete("/runs/{run_id}", tags=["workflow"])
     async def delete_run(run_id: str):
@@ -436,7 +448,7 @@ def create_app() -> "FastAPI":
         success = run_storage.delete_run(run_id)
         if not success:
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-        return {"status": "deleted", "run_id": run_id}
+        return success_response(data={"run_id": run_id, "status": "deleted"})
 
     @app.patch("/runs/{run_id}/tags", tags=["workflow"])
     async def update_run_tags(run_id: str, tags: Dict[str, Any]):
