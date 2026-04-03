@@ -1,0 +1,71 @@
+# TUTOR 项目配置文件
+# 根据工程化指南要求，配置必须可配置化
+
+# 调度器配置
+scheduler:
+  max_concurrent: 3
+  budget_limit_usd: 100.0
+  cost_per_idea_usd: 2.0
+  default_timeout_minutes: 30
+  retry_failed: true
+  max_retries: 1
+
+# 模型配置
+model:
+  provider: "openai"  # openai, anthropic, local
+  api_base: "https://api.openai.com/v1"
+  api_key: ""  # 从环境变量读取
+  models:
+    debate_a: "gpt-4"
+    debate_b: "gpt-4"
+    evaluator: "gpt-4"
+    reviewer: "gpt-4"
+    writer: "gpt-4"
+
+# 存储配置
+storage:
+  database: "sqlite:///tutor.db"
+  project_dir: "./projects"
+  templates_dir: "./templates"
+
+# 工作流配置
+workflow:
+  idea_generation:
+    max_ideas: 10
+    debate_rounds: 2
+    timeout_minutes: 5
+
+  experiment:
+    max_runtime_hours: 24
+    check_interval_minutes: 5
+
+  reviewing:
+    reviewer_roles: ["theoretical", "engineering", "academic"]
+    timeout_seconds: 30
+
+  writing:
+    output_format: "markdown"  # markdown, latex
+    auto_format_check: true
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "tutor.log"
+  max_size_mb: 10
+  backup_count: 3
+
+# CLI配置
+cli:
+  prompt_style: "default"
+  color_output: true
+  confirm_before_execute: true
+
+# API认证配置
+auth:
+  api_key: ""  # 从环境变量 API_KEY 读取，空值则跳过认证（开发模式）
+  skip_auth_paths:
+    - "/health"
+    - "/health/live"
+    - "/health/ready"
+    - "/metrics"
+    - "/docs"

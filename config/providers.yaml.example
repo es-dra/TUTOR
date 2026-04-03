@@ -1,0 +1,29 @@
+# Provider Configuration Template
+# Copy this file to providers.yaml and fill in your API keys
+# API keys should be stored in encrypted format using SecureConfig
+#
+# To encrypt an API key:
+#   from tutor.core.secure_config import encrypt_api_key
+#   encrypted = encrypt_api_key("your-api-key-here")
+#
+# Then add to providers.yaml:
+#   openai_api_key: "ENCRYPTED:<encrypted-value>"
+
+openai_api_base: https://api.openai.com/v1
+# openai_api_key: "ENCRYPTED:your-encrypted-key-here"
+
+deepseek_api_base: https://api.deepseek.com/v1
+# deepseek_api_key: "ENCRYPTED:your-encrypted-key-here"
+
+anthropic_api_base: https://api.anthropic.com
+# anthropic_api_key: "ENCRYPTED:your-encrypted-key-here"
+
+azure_api_base: ""
+# azure_api_key: "ENCRYPTED:your-encrypted-key-here"
+# azure_deployment_name: ""
+
+local_api_base: http://localhost:11434/v1
+# local_api_key: ""  # No key needed for local Ollama
+
+minimax_api_base: https://api.minimax.chat/v1
+# minimax_api_key: "ENCRYPTED:your-encrypted-key-here"

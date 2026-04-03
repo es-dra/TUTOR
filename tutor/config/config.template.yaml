@@ -1,0 +1,61 @@
+# TUTOR 项目配置文件模板
+# 复制为 config.yaml 并填写实际值
+
+# 调度器配置
+scheduler:
+  max_concurrent: 3
+  budget_limit_usd: 100.0
+  cost_per_idea_usd: 2.0
+  default_timeout_minutes: 30
+  retry_failed: true
+  max_retries: 1
+
+# 模型配置
+model:
+  provider: "openai"  # openai, anthropic, local
+  api_base: "https://api.openai.com/v1"
+  api_key: "YOUR_API_KEY_HERE"  # 替换为实际API密钥
+  models:
+    debate_a: "gpt-4"
+    debate_b: "gpt-4"
+    evaluator: "gpt-4"
+    reviewer: "gpt-4"
+    writer: "gpt-4"
+
+# 存储配置
+storage:
+  database: "sqlite:///tutor.db"
+  project_dir: "./projects"
+  templates_dir: "./templates"
+
+# 工作流配置
+workflow:
+  idea_generation:
+    max_ideas: 10
+    debate_rounds: 2
+    timeout_minutes: 5
+
+  experiment:
+    max_runtime_hours: 24
+    check_interval_minutes: 5
+
+  reviewing:
+    reviewer_roles: ["theoretical", "engineering", "academic"]
+    timeout_seconds: 30
+
+  writing:
+    output_format: "markdown"  # markdown, latex
+    auto_format_check: true
+
+# 日志配置
+logging:
+  level: "INFO"
+  file: "tutor.log"
+  max_size_mb: 10
+  backup_count: 3
+
+# CLI配置
+cli:
+  prompt_style: "default"
+  color_output: true
+  confirm_before_execute: true

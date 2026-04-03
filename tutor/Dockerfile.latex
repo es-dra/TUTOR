@@ -1,0 +1,26 @@
+"""TutorClaw Docker image - extended build with LaTeX support."""
+
+FROM python:3.11-slim
+
+LABEL maintainer="TutorClaw" \
+      description="TutorClaw with LaTeX rendering support" \
+      variant="with-latex"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    texlive-latex-base \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+RUN pip install --no-cache-dir . || pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["tutor", "api", "serve", "--host", "0.0.0.0", "--port", "8000"]
