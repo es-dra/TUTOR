@@ -45,6 +45,7 @@ class ResourceMonitor:
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._lock = threading.Lock()
+        self._stop_event = threading.Event()
 
     def collect(self) -> ResourceSnapshot:
         """单次采集资源快照"""
@@ -116,6 +117,7 @@ class ResourceMonitor:
         """后台线程定期采集"""
         if self._running:
             return
+        self._stop_event.clear()
         self._running = True
         self._thread = threading.Thread(target=self._collect_loop, daemon=True)
         self._thread.start()
@@ -123,6 +125,7 @@ class ResourceMonitor:
 
     def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=self.interval_seconds * 2)
         logger.info("ResourceMonitor stopped")
@@ -132,7 +135,8 @@ class ResourceMonitor:
             snapshot = self.collect()
             with self._lock:
                 self._history.append(snapshot)
-            threading.Event().wait(self.interval_seconds)
+            # Use shared stop event so stop() can wake this thread immediately
+            self._stop_event.wait(self.interval_seconds)
 
     def get_history(self) -> List[ResourceSnapshot]:
         with self._lock:
