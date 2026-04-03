@@ -36,37 +36,35 @@
 ## 项目结构
 
 ```
-tutor/
-├── api/                    # FastAPI Web 服务
-│   ├── main.py            # 主应用（限流、SSE、审批路由）
-│   └── prometheus.py       # 指标导出
-├── cli/                   # CLI 命令行工具
-│   ├── idea.py            # 想法生成命令
-│   ├── experiment.py      # 实验执行命令
-│   ├── review.py          # 论文评审命令
-│   └── write.py           # 论文撰写命令
-├── core/
-│   ├── model/             # ModelGateway 模型调用
-│   ├── workflow/          # 工作流定义
-│   │   ├── base.py        # 引擎基类
-│   │   ├── idea.py        # IdeaFlow
-│   │   ├── experiment.py  # ExperimentFlow
-│   │   ├── review.py      # ReviewFlow
-│   │   └── write.py       # WriteFlow
-│   ├── scheduling/         # 调度器
-│   ├── storage/            # 存储后端
-│   │   └── workflow_runs.py  # SQLite持久化
-│   ├── monitor/            # 监控指标
-│   └── external/          # 外部服务集成
-├── config/                # 配置文件
-└── tests/                # 测试套件
-
-web/                      # React Web 应用
-├── src/
-│   ├── App.js            # 主应用
-│   ├── api.js            # API 客户端
-│   └── pages/            # 页面组件
-└── package.json
+TUTOR/
+├── tutor/                    # Python 后端包
+│   ├── api/                 # FastAPI Web 服务
+│   │   ├── main.py         # 主应用
+│   │   ├── routes/         # API 路由
+│   │   └── sse/            # SSE 事件推送
+│   ├── cli/                # CLI 命令行工具
+│   ├── core/                # 核心模块
+│   │   ├── model/          # ModelGateway 模型调用
+│   │   ├── workflow/       # 工作流定义
+│   │   │   ├── base.py     # 引擎基类
+│   │   │   ├── idea.py     # IdeaFlow
+│   │   │   ├── experiment.py # ExperimentFlow
+│   │   │   ├── review.py   # ReviewFlow
+│   │   │   └── write.py    # WriteFlow
+│   │   ├── storage/         # 存储后端
+│   │   ├── providers/       # AI Provider 配置
+│   │   └── ...
+│   └── config/             # 配置文件
+├── web/                     # React Web 应用
+│   └── src/
+│       └── pages/          # 页面组件
+├── tests/                   # 测试套件
+│   ├── unit/               # 单元测试
+│   └── integration/        # 集成测试
+├── docs/                   # 详细设计文档
+│   └── research_workflow_design.md
+└── config/                 # 配置文件
+    └── providers.yaml.example  # Provider 配置模板
 ```
 
 ## 快速开始

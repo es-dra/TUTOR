@@ -72,6 +72,9 @@ class RunStorage:
         )
         """)
 
+        # 迁移：为已存在的表添加缺失的列
+        self._migrate_missing_columns(cursor)
+
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS run_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +97,21 @@ class RunStorage:
         """)
 
         self._conn.commit()
+
+    def _migrate_missing_columns(self, cursor) -> None:
+        """迁移已存在的数据表，添加缺失的列"""
+        try:
+            # 检查 workflow_runs 表是否有 tags 列
+            cursor.execute("PRAGMA table_info(workflow_runs)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "tags" not in columns:
+                logger.info("Adding 'tags' column to workflow_runs table")
+                cursor.execute("ALTER TABLE workflow_runs ADD COLUMN tags TEXT DEFAULT '[]'")
+                self._conn.commit()
+        except Exception as e:
+            logger.warning(f"Migration check failed: {e}")
+            # 迁移失败不影响启动
 
     def close(self) -> None:
         """关闭数据库连接"""
