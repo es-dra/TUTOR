@@ -50,7 +50,16 @@
       "Bash(cp -r \"D:/Projects/TUTOR/everything-claude-code/rules/\"* \"C:/Users/chenzy/.claude/rules/everything-claude-code/\")",
       "Bash(find D:/Projects/TUTOR/everything-claude-code -name *.md -type f)",
       "Bash(mkdir -p \"C:/Users/chenzy/.claude/skills/ecc\")",
-      "Bash(cp -r \"D:/Projects/TUTOR/everything-claude-code/.agents/skills/\"* \"C:/Users/chenzy/.claude/skills/ecc/\")"
+      "Bash(cp -r \"D:/Projects/TUTOR/everything-claude-code/.agents/skills/\"* \"C:/Users/chenzy/.claude/skills/ecc/\")",
+      "Bash(cd:*)",
+      "Bash(ls -la *.md)",
+      "Bash(mkdir -p docs)",
+      "Bash(mv research_workflow_design.md docs/)",
+      "Bash(sqlite3 data/tutor_runs.db \"PRAGMA table_info\\(workflow_runs\\);\")",
+      "Bash(mkdir -p docs/internal docs/adr docs/dev-logs)",
+      "Bash(mv tutor/docs/* docs/internal/)",
+      "Bash(mv tutor/development-logs/* docs/dev-logs/)",
+      "Bash(mv tutor/obsidian-notes/*.md docs/adr/)"
     ]
   }
 }

@@ -151,6 +151,16 @@ tutor/venv/
 tutor/htmlcov/
 tutor/.pytest_cache/
 tutor/.ruff_cache/
+tutor/.coverage
+tutor/tutor.egg-info/
+tutor/tests/
+tutor/docs/
+tutor/custom_results/
+tutor/scheduler_results/
+tutor/test_data/
+tutor/test_results/
+tutor/development-logs/
+tutor/obsidian-notes/
 data/
 test_results/
 scheduler_results/
