@@ -59,7 +59,8 @@
       "Bash(mkdir -p docs/internal docs/adr docs/dev-logs)",
       "Bash(mv tutor/docs/* docs/internal/)",
       "Bash(mv tutor/development-logs/* docs/dev-logs/)",
-      "Bash(mv tutor/obsidian-notes/*.md docs/adr/)"
+      "Bash(mv tutor/obsidian-notes/*.md docs/adr/)",
+      "Bash(npm search:*)"
     ]
   }
 }
