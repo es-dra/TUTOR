@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -23,6 +24,7 @@ except ImportError:
 @dataclass
 class ResourceSnapshot:
     """系统资源快照"""
+
     timestamp: datetime
     cpu_percent: float
     memory_percent: float
@@ -46,6 +48,7 @@ class ResourceMonitor:
         self._running = False
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._warning_callback = None
 
     def collect(self) -> ResourceSnapshot:
         """单次采集资源快照"""
@@ -66,7 +69,9 @@ class ResourceMonitor:
         disk = shutil.disk_usage("/")
         disk_total_gb = round(disk.total / (1024**3), 2)
         disk_free_gb = round(disk.free / (1024**3), 2)
-        disk_percent = round((1 - disk.free / disk.total) * 100, 2) if disk.total > 0 else 0.0
+        disk_percent = (
+            round((1 - disk.free / disk.total) * 100, 2) if disk.total > 0 else 0.0
+        )
 
         gpu_util = gpu_mem_used = gpu_mem_total = None
         if self.gpu_enabled:
@@ -91,8 +96,14 @@ class ResourceMonitor:
         """采集 GPU 信息，失败返回 None"""
         try:
             result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader"],
-                capture_output=True, text=True, timeout=5,
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode != 0:
                 return None, None, None
@@ -105,13 +116,41 @@ class ResourceMonitor:
         except Exception:
             return None, None, None
 
-    
     def is_running(self) -> bool:
         return self._running
 
     def set_warning_callback(self, callback) -> None:
-        # 兼容 QuotaManager 逻辑
-        pass
+        """设置配额警告回调函数"""
+        self._warning_callback = callback
+
+    def _check_thresholds(self, snapshot: ResourceSnapshot) -> None:
+        """检查资源使用是否超过阈值并触发回调"""
+        if not self._warning_callback:
+            return
+        warnings = []
+        if snapshot.cpu_percent >= 90.0:
+            warnings.append(f"CPU usage {snapshot.cpu_percent:.1f}% >= 90%")
+        if snapshot.memory_percent >= 80.0:
+            warnings.append(f"Memory usage {snapshot.memory_percent:.1f}% >= 80%")
+        if snapshot.disk_percent >= 80.0:
+            warnings.append(f"Disk usage {snapshot.disk_percent:.1f}% >= 80%")
+        if snapshot.gpu_utilization is not None and snapshot.gpu_utilization >= 80.0:
+            warnings.append(f"GPU usage {snapshot.gpu_utilization:.1f}% >= 80%")
+        if (
+            snapshot.gpu_memory_total_gb
+            and snapshot.gpu_memory_total_gb > 0
+            and snapshot.gpu_memory_used_gb is not None
+        ):
+            gpu_mem_pct = (
+                snapshot.gpu_memory_used_gb / snapshot.gpu_memory_total_gb
+            ) * 100
+            if gpu_mem_pct >= 80.0:
+                warnings.append(f"GPU memory usage {gpu_mem_pct:.1f}% >= 80%")
+        for warning_msg in warnings:
+            try:
+                self._warning_callback(warning_msg, snapshot)
+            except Exception as e:
+                logger.error(f"Warning callback failed: {e}")
 
     def start(self) -> None:
         """后台线程定期采集"""
@@ -135,6 +174,7 @@ class ResourceMonitor:
             snapshot = self.collect()
             with self._lock:
                 self._history.append(snapshot)
+            self._check_thresholds(snapshot)
             # Use shared stop event so stop() can wake this thread immediately
             self._stop_event.wait(self.interval_seconds)
 

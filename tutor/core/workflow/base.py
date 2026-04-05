@@ -21,11 +21,13 @@ logger = logging.getLogger(__name__)
 def _get_token_tracker():
     """延迟导入避免循环依赖"""
     from tutor.core.monitor.token_budget import WorkflowTokenTracker, TokenBudget
+
     return WorkflowTokenTracker, TokenBudget
 
 
-@dataclass
 class WorkflowPauseError(Exception):
+    """工作流暂停异常"""
+
     def __init__(self, message: str, original_error: Optional[Exception] = None):
         super().__init__(message)
         self.original_error = original_error
@@ -38,6 +40,7 @@ class OrchestratorDecision:
     记录工作流执行过程中由系统自主处理的决策，
     用于事后审计和透明度提升。
     """
+
     timestamp: str
     workflow_id: str
     step_name: str
@@ -53,6 +56,7 @@ class OrchestratorDecision:
 
 class WorkflowStatus(str, Enum):
     """工作流状态枚举"""
+
     PENDING = "pending"
     RUNNING = "running"
     PAUSED = "paused"
@@ -64,9 +68,10 @@ class WorkflowStatus(str, Enum):
 @dataclass
 class CheckpointData:
     """检查点数据
-    
+
     用于工作流状态持久化和断点续传。
     """
+
     workflow_id: str
     workflow_type: str
     status: str
@@ -78,49 +83,59 @@ class CheckpointData:
     error: Optional[str]
     created_at: str
     updated_at: str
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
         return asdict(self)
-    
+
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'CheckpointData':
+    def from_dict(cls, data: Dict[str, Any]) -> "CheckpointData":
         """从字典创建
-        
+
         过滤掉未知字段（如 _crc32），只使用 CheckpointData 定义的字段。
         """
         # 定义 CheckpointData 的有效字段
         valid_fields = {
-            'workflow_id', 'workflow_type', 'status', 'current_step',
-            'total_steps', 'step_name', 'input_data', 'output_data',
-            'error', 'created_at', 'updated_at'
+            "workflow_id",
+            "workflow_type",
+            "status",
+            "current_step",
+            "total_steps",
+            "step_name",
+            "input_data",
+            "output_data",
+            "error",
+            "created_at",
+            "updated_at",
         }
 
         # 只保留有效字段
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
 
         return cls(**filtered_data)
-    
+
     def save(self, path: Path) -> None:
         """保存检查点到文件"""
         path.parent.mkdir(parents=True, exist_ok=True)
         data_dict = self.to_dict()
         content = json.dumps(data_dict, ensure_ascii=False).encode()
-        data_dict['_crc32'] = zlib.crc32(content) & 0xffffffff
-        with open(path, 'w', encoding='utf-8') as f:
+        data_dict["_crc32"] = zlib.crc32(content) & 0xFFFFFFFF
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data_dict, f, indent=2, ensure_ascii=False)
         logger.debug(f"Checkpoint saved: {path}")
-    
+
     @classmethod
-    def load(cls, path: Path) -> 'CheckpointData':
+    def load(cls, path: Path) -> "CheckpointData":
         """从文件加载检查点"""
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         # CRC32 校验
-        stored_crc = data.get('_crc32')
+        stored_crc = data.get("_crc32")
         if stored_crc:
-            del data['_crc32']
-            actual_crc = zlib.crc32(json.dumps(data, ensure_ascii=False).encode()) & 0xffffffff
+            del data["_crc32"]
+            actual_crc = (
+                zlib.crc32(json.dumps(data, ensure_ascii=False).encode()) & 0xFFFFFFFF
+            )
             if stored_crc != actual_crc:
                 raise ValueError(f"CRC32 mismatch for {path}")
         return cls.from_dict(data)
@@ -129,6 +144,7 @@ class CheckpointData:
 @dataclass
 class WorkflowResult:
     """工作流执行结果"""
+
     workflow_id: str
     status: str
     output: Dict[str, Any]
@@ -147,27 +163,31 @@ class WorkflowResult:
             "output": self.output,
             "error": self.error,
             "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "completed_at": self.completed_at.isoformat()
+            if self.completed_at
+            else None,
             "duration_seconds": self.duration_seconds,
             "decision_log": self.decision_log or [],
         }
 
 
-
 T = TypeVar("T")
+
 
 class WorkflowContext(Generic[T]):
     """工作流上下文
-    
+
     在工作流执行期间共享状态和资源。
     """
-    
-    def __init__(self,
-                 workflow_id: str,
-                 config: Dict[str, Any],
-                 storage_path: Path,
-                 model_gateway: Any,
-                 broadcaster: Any = None):
+
+    def __init__(
+        self,
+        workflow_id: str,
+        config: Dict[str, Any],
+        storage_path: Path,
+        model_gateway: Any,
+        broadcaster: Any = None,
+    ):
         self.workflow_id = workflow_id
         self.config = config
         self.storage_path = storage_path
@@ -235,7 +255,7 @@ class WorkflowContext(Generic[T]):
     def get_checkpoint_path(self, step: int) -> Path:
         """获取检查点文件路径"""
         return self.checkpoints_dir / f"step_{step:04d}.json"
-    
+
     def get_latest_checkpoint(self) -> Optional[CheckpointData]:
         """获取最新的检查点（支持校验和自动修复）"""
         if not self.checkpoints_dir.exists():
@@ -249,7 +269,10 @@ class WorkflowContext(Generic[T]):
         for checkpoint_path in reversed(checkpoints):
             try:
                 # 使用验证器加载和修复检查点
-                from tutor.core.storage.checkpoint_validation import validate_checkpoint_file
+                from tutor.core.storage.checkpoint_validation import (
+                    validate_checkpoint_file,
+                )
+
                 data = validate_checkpoint_file(checkpoint_path, repair=True)
 
                 if data is None:
@@ -257,20 +280,22 @@ class WorkflowContext(Generic[T]):
                     continue  # 尝试更早的检查点
 
                 return CheckpointData.from_dict(data)
-    
+
             except Exception as e:
                 logger.error(f"Failed to load checkpoint {checkpoint_path}: {e}")
                 continue
 
         logger.warning("No valid checkpoints found")
         return None
-    
-    def save_checkpoint(self, 
-                       step: int,
-                       step_name: str,
-                       input_data: Dict[str, Any],
-                       output_data: Dict[str, Any],
-                       error: Optional[str] = None) -> CheckpointData:
+
+    def save_checkpoint(
+        self,
+        step: int,
+        step_name: str,
+        input_data: Dict[str, Any],
+        output_data: Dict[str, Any],
+        error: Optional[str] = None,
+    ) -> CheckpointData:
         """保存检查点"""
         checkpoint = CheckpointData(
             workflow_id=self.workflow_id,
@@ -283,26 +308,26 @@ class WorkflowContext(Generic[T]):
             output_data=output_data,
             error=error,
             created_at=datetime.now(timezone.utc).isoformat() + "Z",
-            updated_at=datetime.now(timezone.utc).isoformat() + "Z"
+            updated_at=datetime.now(timezone.utc).isoformat() + "Z",
         )
-        
+
         path = self.get_checkpoint_path(step)
         checkpoint.save(path)
         logger.info(f"Checkpoint saved: step {step} ({step_name})")
         return checkpoint
-    
+
     def get_state(self, key: str, default: Any = None) -> Any:
         """获取状态值"""
         return self._state.get(key, default)
-    
+
     def set_state(self, key: str, value: Any) -> None:
         """设置状态值"""
         self._state[key] = value
-    
+
     def get_all_state(self) -> Dict[str, Any]:
         """获取所有状态"""
         return self._state.copy()
-    
+
     def update_state(self, updates: Dict[str, Any]) -> None:
         """批量更新状态"""
         self._state.update(updates)
@@ -310,21 +335,21 @@ class WorkflowContext(Generic[T]):
 
 class WorkflowStep(ABC):
     """工作流步骤抽象基类
-    
+
     每个工作流由多个步骤组成，步骤可以顺序或并行执行。
     """
-    
+
     def __init__(self, name: str, description: str = ""):
         self.name = name
         self.description = description
         self.logger = logging.getLogger(f"{__name__}.{self.name}")
-    
-    def execute(self, context: 'WorkflowContext') -> Dict[str, Any]:
+
+    def execute(self, context: "WorkflowContext") -> Dict[str, Any]:
         """执行步骤（子类应重写此方法）
-        
+
         Args:
             context: 工作流上下文
-            
+
         Returns:
             步骤执行结果数据
         """
@@ -332,35 +357,37 @@ class WorkflowStep(ABC):
             f"Step '{self.name}' does not implement execute(). "
             "Subclasses must override this method."
         )
-    
+
     def validate(self, context: WorkflowContext) -> List[str]:
         """验证步骤执行条件
-        
+
         Returns:
             错误消息列表，空表示验证通过
         """
         return []
-    
+
     def rollback(self, context: WorkflowContext) -> None:
         """回滚步骤（可选实现）"""
         self.logger.warning(f"Rollback not implemented for step: {self.name}")
-    
+
     def __str__(self) -> str:
         return f"WorkflowStep({self.name})"
 
 
 class Workflow(ABC):
     """工作流抽象基类
-    
+
     所有具体工作流（IdeaFlow、ExperimentFlow等）都应继承此类。
     """
-    
-    def __init__(self,
-                 workflow_id: str,
-                 config: Dict[str, Any],
-                 storage_path: Path,
-                 model_gateway: Any,
-                 broadcaster: Any = None):
+
+    def __init__(
+        self,
+        workflow_id: str,
+        config: Dict[str, Any],
+        storage_path: Path,
+        model_gateway: Any,
+        broadcaster: Any = None,
+    ):
         self.workflow_id = workflow_id
         self.config = config
         self.storage_path = storage_path
@@ -370,7 +397,7 @@ class Workflow(ABC):
             config=config,
             storage_path=storage_path,
             model_gateway=model_gateway,
-            broadcaster=broadcaster
+            broadcaster=broadcaster,
         )
         self.steps: List[WorkflowStep] = []
         self._current_step_index = 0
@@ -386,16 +413,16 @@ class Workflow(ABC):
         # 监控（V3新增）
         self._monitor = None
         self._monitor_config = config.get("monitor", {})
-        
+
     @abstractmethod
     def build_steps(self) -> List[WorkflowStep]:
         """构建工作流步骤列表
-        
+
         Returns:
             步骤列表，按执行顺序排列
         """
         pass
-    
+
     def initialize(self) -> None:
         """初始化工作流"""
         self.steps = self.build_steps()
@@ -409,7 +436,9 @@ class Workflow(ABC):
             # 否则恢复时从下一步开始
             if latest_checkpoint.status == WorkflowStatus.PAUSED:
                 self._current_step_index = latest_checkpoint.current_step
-                self.logger.info(f"Resuming PAUSED workflow from step {self._current_step_index}")
+                self.logger.info(
+                    f"Resuming PAUSED workflow from step {self._current_step_index}"
+                )
             else:
                 self._current_step_index = latest_checkpoint.current_step + 1
                 self.logger.info(f"Resuming from step {self._current_step_index}")
@@ -427,32 +456,39 @@ class Workflow(ABC):
             return
 
         try:
-            from tutor.core.monitor.resource_monitor import ResourceMonitor
+            from tutor.core.monitor.resource_collector import ResourceMonitor
             from tutor.core.monitor.quotas import QuotaWarning
 
             def on_quota_warning(warning: QuotaWarning) -> None:
                 """处理配额警告"""
                 self.logger.warning(f"Quota Warning: {warning.message}")
-                
+
                 if self.context.broadcaster:
                     import asyncio
+
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
-                            loop.create_task(self.context.broadcaster.emit(
-                                self.workflow_id, "quota_warning", warning.to_dict()
-                            ))
+                            loop.create_task(
+                                self.context.broadcaster.emit(
+                                    self.workflow_id, "quota_warning", warning.to_dict()
+                                )
+                            )
                     except Exception as e:
                         self.logger.error(f"Failed to emit quota warning SSE: {e}")
 
                 if warning.current_value >= 95.0:
-                    self.logger.error(f"FATAL Quota Warning: {warning.message}. Requesting workflow PAUSE.")
-                    raise WorkflowPauseError(f"Workflow paused due to fatal resource limit: {warning.message}")
+                    self.logger.error(
+                        f"FATAL Quota Warning: {warning.message}. Requesting workflow PAUSE."
+                    )
+                    raise WorkflowPauseError(
+                        f"Workflow paused due to fatal resource limit: {warning.message}"
+                    )
 
             # 过滤参数，只传递 ResourceMonitor 接受的字段
             valid_args = {
-                'interval_seconds': monitor_cfg.get('interval_seconds', 60),
-                'gpu_enabled': monitor_cfg.get('gpu_enabled', True)
+                "interval_seconds": monitor_cfg.get("interval_seconds", 60),
+                "gpu_enabled": monitor_cfg.get("gpu_enabled", True),
             }
             self._monitor = ResourceMonitor(**valid_args)
             self._monitor.set_warning_callback(on_quota_warning)
@@ -463,17 +499,15 @@ class Workflow(ABC):
         except Exception as e:
             self.logger.error(f"Failed to start resource monitor: {e}")
 
-
     def _stop_monitoring(self) -> None:
         """停止资源监控"""
         if self._monitor and self._monitor.is_running():
             self._monitor.stop()
             self.logger.info("Resource monitor stopped")
-    
-    
+
     def get_progress(self) -> Dict[str, int]:
         """获取工作流进度
-        
+
         Returns:
             包含 total_steps, current_step, percent 的字典
         """
@@ -484,7 +518,7 @@ class Workflow(ABC):
         return {
             "total_steps": total,
             "current_step": current,
-            "percent": current / total if total > 0 else 0.0
+            "percent": current / total if total > 0 else 0.0,
         }
 
     def get_result(self) -> Optional[WorkflowResult]:
@@ -499,37 +533,41 @@ class Workflow(ABC):
         self._start_monitoring()
 
         strategy_map = {
-            "rollback": FailureStrategy.ROLLBACK, 
-            "stop": FailureStrategy.STOP, 
+            "rollback": FailureStrategy.ROLLBACK,
+            "stop": FailureStrategy.STOP,
             "continue": FailureStrategy.CONTINUE,
-            "pause": FailureStrategy.PAUSE
+            "pause": FailureStrategy.PAUSE,
         }
         failure_strategy = strategy_map.get(self.failure_strategy, FailureStrategy.STOP)
 
         try:
             if not self.steps:
                 self.initialize()
-            
+
             while self._current_step_index < len(self.steps):
                 step = self.steps[self._current_step_index]
-                self.logger.info(f"Executing step {self._current_step_index + 1}/{len(self.steps)}: {step.name}")
+                self.logger.info(
+                    f"Executing step {self._current_step_index + 1}/{len(self.steps)}: {step.name}"
+                )
 
                 # 更新 context 中的当前步骤索引（供 gate steps 使用）
                 self.context._current_step = self._current_step_index
-                
+
                 errors = step.validate(self.context)
                 if errors:
                     raise ValueError(f"Step validation failed: {', '.join(errors)}")
-                
+
                 step_input = self.context.get_all_state()
-                
+
                 try:
                     step_output = self._retry_manager.execute_with_retry(
                         step, self.context, self.retry_policy, failure_strategy
                     )
                 except Exception as step_err:
                     if failure_strategy == FailureStrategy.ROLLBACK:
-                        self.logger.error(f"Step '{step.name}' failed, rolling back: {step_err}")
+                        self.logger.error(
+                            f"Step '{step.name}' failed, rolling back: {step_err}"
+                        )
                         self._rollback_chain.rollback_all(self.context)
                         raise
                     elif failure_strategy == FailureStrategy.CONTINUE:
@@ -544,48 +582,59 @@ class Workflow(ABC):
                         )
                         step_output = {}
                         self.context.save_checkpoint(
-                            step=self._current_step_index, step_name=step.name,
-                            input_data=step_input, output_data=step_output,
+                            step=self._current_step_index,
+                            step_name=step.name,
+                            input_data=step_input,
+                            output_data=step_output,
                             error=str(step_err),
                         )
                         self._current_step_index += 1
                         continue
                     elif failure_strategy == FailureStrategy.PAUSE:
-                        raise WorkflowPauseError(f"Workflow paused at step '{step.name}'", step_err)
+                        raise WorkflowPauseError(
+                            f"Workflow paused at step '{step.name}'", step_err
+                        )
                     else:
                         raise
-                
+
                 self._rollback_chain.add_step(self._current_step_index, step)
-                
+
                 self.context.save_checkpoint(
-                    step=self._current_step_index, step_name=step.name,
-                    input_data=step_input, output_data=step_output,
+                    step=self._current_step_index,
+                    step_name=step.name,
+                    input_data=step_input,
+                    output_data=step_output,
                 )
                 self.context.update_state(step_output)
 
                 # SSE 进度推送
                 if self.context.broadcaster:
                     import asyncio
+
                     try:
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
-                            loop.create_task(self.context.broadcaster.emit(
-                                self.workflow_id, "step", {
-                                    "step_index": self._current_step_index,
-                                    "step_name": step.name,
-                                    "total_steps": len(self.steps),
-                                    "status": "completed"
-                                }
-                            ))
+                            loop.create_task(
+                                self.context.broadcaster.emit(
+                                    self.workflow_id,
+                                    "step",
+                                    {
+                                        "step_index": self._current_step_index,
+                                        "step_name": step.name,
+                                        "total_steps": len(self.steps),
+                                        "status": "completed",
+                                    },
+                                )
+                            )
                     except Exception as e:
                         self.logger.error(f"Failed to emit step progress SSE: {e}")
                 self._current_step_index += 1
-            
+
             status = WorkflowStatus.COMPLETED
             error = None
-            
+
             result_data = self.context.get_all_state()
-            
+
             # 停止监控
             self._stop_monitoring()
 
@@ -596,17 +645,30 @@ class Workflow(ABC):
                 error=error,
                 started_at=started_at,
                 completed_at=datetime.now(timezone.utc),
-                duration_seconds=(datetime.now(timezone.utc) - started_at).total_seconds(),
+                duration_seconds=(
+                    datetime.now(timezone.utc) - started_at
+                ).total_seconds(),
                 decision_log=self.context.get_decision_log(),
             )
             self._result = result
-            
+
             # 记录指标 (V3)
             try:
                 from tutor.api.prometheus import get_metrics
+
                 metrics = get_metrics()
-                metrics.counter("tutor_workflow_runs_total", labels={"workflow_type": self.__class__.__name__, "status": status.value})
-                metrics.histogram("tutor_workflow_duration_seconds", result.duration_seconds, labels={"workflow_type": self.__class__.__name__})
+                metrics.counter(
+                    "tutor_workflow_runs_total",
+                    labels={
+                        "workflow_type": self.__class__.__name__,
+                        "status": status.value,
+                    },
+                )
+                metrics.histogram(
+                    "tutor_workflow_duration_seconds",
+                    result.duration_seconds,
+                    labels={"workflow_type": self.__class__.__name__},
+                )
             except Exception as e:
                 self.logger.warning(f"Failed to record metrics: {e}")
             return result
@@ -621,7 +683,9 @@ class Workflow(ABC):
                 error=str(pause_err),
                 started_at=started_at,
                 completed_at=datetime.now(timezone.utc),
-                duration_seconds=(datetime.now(timezone.utc) - started_at).total_seconds(),
+                duration_seconds=(
+                    datetime.now(timezone.utc) - started_at
+                ).total_seconds(),
                 decision_log=self.context.get_decision_log(),
             )
         except Exception as e:
@@ -634,10 +698,11 @@ class Workflow(ABC):
                 error=str(e),
                 started_at=started_at,
                 completed_at=datetime.now(timezone.utc),
-                duration_seconds=(datetime.now(timezone.utc) - started_at).total_seconds(),
+                duration_seconds=(
+                    datetime.now(timezone.utc) - started_at
+                ).total_seconds(),
                 decision_log=self.context.get_decision_log(),
             )
-
 
 
 class WorkflowEngine:
@@ -653,14 +718,16 @@ class WorkflowEngine:
         self.active_workflows: Dict[str, Workflow] = {}
         self.logger = logging.getLogger(__name__)
 
-    def create_workflow(self, workflow_class: type, workflow_id: str, config: Dict[str, Any]) -> Workflow:
+    def create_workflow(
+        self, workflow_class: type, workflow_id: str, config: Dict[str, Any]
+    ) -> Workflow:
         """创建工作流实例"""
         workflow = workflow_class(
             workflow_id=workflow_id,
             config=config,
             storage_path=self.storage_path,
             model_gateway=self.model_gateway,
-            broadcaster=self.broadcaster
+            broadcaster=self.broadcaster,
         )
         if workflow_id in self.active_workflows:
             raise ValueError(f"Workflow {workflow_id} already exists")
@@ -677,7 +744,7 @@ class WorkflowEngine:
                 "workflow_id": w.workflow_id,
                 "type": w.config.get("type", "unknown"),
                 "status": w._result.status if w._result else "running",
-                "progress": w.get_progress()
+                "progress": w.get_progress(),
             }
             for w in self.active_workflows.values()
         ]
@@ -717,7 +784,10 @@ class WorkflowEngine:
         workflow = self.active_workflows.get(workflow_id)
         if not workflow:
             return False
-        return workflow._result is not None and workflow._result.status == WorkflowStatus.PAUSED
+        return (
+            workflow._result is not None
+            and workflow._result.status == WorkflowStatus.PAUSED
+        )
 
     def cancel_workflow(self, workflow_id: str) -> bool:
         """取消工作流"""
@@ -726,7 +796,9 @@ class WorkflowEngine:
             return False
 
         if workflow._result and workflow._result.status in [
-            WorkflowStatus.COMPLETED, WorkflowStatus.FAILED, WorkflowStatus.CANCELLED
+            WorkflowStatus.COMPLETED,
+            WorkflowStatus.FAILED,
+            WorkflowStatus.CANCELLED,
         ]:
             return False
 

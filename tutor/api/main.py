@@ -61,6 +61,23 @@ class RateLimiter:
         self.requests_per_minute = requests_per_minute
         self.burst_size = burst_size
         self.requests: Dict[str, List[float]] = defaultdict(list)
+        self._last_cleanup: float = time.time()
+
+    def _cleanup_old_entries(self) -> None:
+        """定期清理不再活跃的客户端条目"""
+        now = time.time()
+        # 每5分钟清理一次
+        if now - self._last_cleanup < 300:
+            return
+        self._last_cleanup = now
+        minute_ago = now - 60
+        inactive_clients = [
+            cid
+            for cid, timestamps in self.requests.items()
+            if not timestamps or max(timestamps) < minute_ago
+        ]
+        for cid in inactive_clients:
+            del self.requests[cid]
 
     def is_allowed(self, client_id: str) -> bool:
         """检查请求是否允许"""
@@ -78,6 +95,9 @@ class RateLimiter:
 
         # 记录请求
         self.requests[client_id].append(now)
+
+        # 定期清理不活跃客户端
+        self._cleanup_old_entries()
         return True
 
     def get_retry_after(self, client_id: str) -> int:
@@ -417,7 +437,7 @@ def create_app() -> "FastAPI":
                 detail=f"Invalid workflow_type '{request.workflow_type}'. Must be one of: {valid_types}",
             )
 
-        run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())
         run_storage.create_run(
             run_id=run_id,
             workflow_type=request.workflow_type,
@@ -515,7 +535,7 @@ def create_app() -> "FastAPI":
             )
 
         # 创建新的运行，使用原始参数
-        new_run_id = str(uuid.uuid4())[:8]
+        new_run_id = str(uuid.uuid4())
         run_storage.create_run(
             run_id=new_run_id,
             workflow_type=original_run.get("workflow_type"),

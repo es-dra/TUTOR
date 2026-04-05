@@ -1,34 +1,27 @@
 """Pydantic models for API requests/responses and SSE events."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from tutor.core.workflow.base import WorkflowStatus as WorkflowStatusEnum
 
-class WorkflowName(str, Enum):
-    IDEA = "idea"
-    EXPERIMENT = "experiment"
-    REVIEW = "review"
-    WRITE = "write"
-
-
-class WorkflowStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
+# Re-export for backward compatibility
+WorkflowStatus = WorkflowStatusEnum
 
 
 class RunWorkflowRequest(BaseModel):
     """Request to start a workflow run."""
+
     parameters: Optional[Dict[str, Any]] = Field(default_factory=dict)
     config_override: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 
 class WorkflowRunSummary(BaseModel):
     """Summary of a workflow run."""
+
     run_id: str
     workflow_name: str
     status: WorkflowStatus
@@ -40,6 +33,7 @@ class WorkflowRunSummary(BaseModel):
 
 class StepEvent(BaseModel):
     """Event emitted when a step completes."""
+
     run_id: str
     step_name: str
     status: WorkflowStatus
@@ -48,6 +42,7 @@ class StepEvent(BaseModel):
 
 class LogEvent(BaseModel):
     """Event for log messages."""
+
     run_id: str
     level: str = Field(..., description="Log level: info, warning, error")
     message: str
@@ -56,6 +51,7 @@ class LogEvent(BaseModel):
 
 class WorkflowFinishedEvent(BaseModel):
     """Event emitted when workflow finishes."""
+
     run_id: str
     status: WorkflowStatus
     final_output: Optional[Dict[str, Any]] = None
@@ -65,6 +61,7 @@ class WorkflowFinishedEvent(BaseModel):
 # Union type for all SSE events
 class SSEMessage(BaseModel):
     """Wrapper for all SSE messages."""
+
     event: str  # "workflow_started", "step_completed", "log", "workflow_finished"
     data: Dict[str, Any]
     run_id: str
@@ -73,6 +70,7 @@ class SSEMessage(BaseModel):
 # ============================================================
 # Unified API Response Envelope
 # ============================================================
+
 
 class ApiResponse(BaseModel):
     """统一 API 响应封装
@@ -93,6 +91,7 @@ class ApiResponse(BaseModel):
         }
     }
     """
+
     success: bool = True
     data: Optional[Any] = None
     meta: Optional[Dict[str, Any]] = None
@@ -101,14 +100,17 @@ class ApiResponse(BaseModel):
 
 class PaginatedResponse(BaseModel):
     """分页响应格式"""
+
     success: bool = True
     data: list = Field(default_factory=list)
-    meta: Dict[str, Any] = Field(default_factory=lambda: {
-        "total": 0,
-        "limit": 100,
-        "offset": 0,
-        "has_more": False,
-    })
+    meta: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total": 0,
+            "limit": 100,
+            "offset": 0,
+            "has_more": False,
+        }
+    )
     error: Optional[Dict[str, str]] = None
 
 
@@ -129,7 +131,7 @@ def error_response(code: str, message: str) -> Dict[str, Any]:
         "error": {
             "code": code,
             "message": message,
-        }
+        },
     }
 
 
@@ -148,5 +150,5 @@ def paginated_response(
             "limit": limit,
             "offset": offset,
             "has_more": (offset + limit) < total,
-        }
+        },
     }
