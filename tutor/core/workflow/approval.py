@@ -139,8 +139,66 @@ class ApprovalManager:
         manager.approve(approval_id, by="admin", comment="LGTM")
     """
 
-    def __init__(self):
+    def __init__(self, storage_path: str = None):
+        import os
+        from pathlib import Path
         self._requests: Dict[str, ApprovalRequest] = {}
+        # Use path relative to current working directory
+        if storage_path is None:
+            storage_path = "test_results/approvals.json"
+        self._storage_path = str(Path(storage_path).resolve())
+        self._load_from_file()
+
+    def _load_from_file(self):
+        """从文件加载审批请求"""
+        import json
+        import os
+        if os.path.exists(self._storage_path):
+            try:
+                with open(self._storage_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                for approval_data in data.values():
+                    request = ApprovalRequest(
+                        approval_id=approval_data['approval_id'],
+                        run_id=approval_data['run_id'],
+                        title=approval_data['title'],
+                        description=approval_data.get('description', ''),
+                        context_data=approval_data.get('context_data'),
+                        timeout_seconds=approval_data.get('timeout_seconds', 3600),
+                    )
+                    # 恢复状态
+                    status = approval_data.get('status', 'pending')
+                    if status == 'approved':
+                        request.approve(by=approval_data.get('resolved_by', 'system'), comment=approval_data.get('comment', ''))
+                    elif status == 'rejected':
+                        request.reject(by=approval_data.get('resolved_by', 'system'), comment=approval_data.get('comment', ''))
+                    elif status == 'cancelled':
+                        request.cancel()
+                    self._requests[request.approval_id] = request
+            except Exception as e:
+                logger.warning(f"Failed to load approvals from file: {e}")
+
+    def _save_to_file(self):
+        """保存审批请求到文件"""
+        import json
+        import os
+        os.makedirs(os.path.dirname(self._storage_path), exist_ok=True)
+        data = {}
+        for approval_id, request in self._requests.items():
+            data[approval_id] = {
+                'approval_id': request.approval_id,
+                'run_id': request.run_id,
+                'title': request.title,
+                'description': request.description,
+                'status': request.status.value,
+                'context_data': request.context_data,
+                'timeout_seconds': request.timeout_seconds,
+                'created_at': str(request.created_at),
+                'resolved_by': request.resolved_by,
+                'comment': request.comment,
+            }
+        with open(self._storage_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def create_request(
         self,
@@ -161,6 +219,7 @@ class ApprovalManager:
             timeout_seconds=timeout_seconds,
         )
         self._requests[approval_id] = request
+        self._save_to_file()
         logger.info(f"Approval request created: {approval_id}")
         return request
 
@@ -178,6 +237,7 @@ class ApprovalManager:
         if request.status != ApprovalStatus.PENDING:
             return False
         request.approve(by=by, comment=comment)
+        self._save_to_file()
         return True
 
     def reject(
@@ -190,6 +250,7 @@ class ApprovalManager:
         if request.status != ApprovalStatus.PENDING:
             return False
         request.reject(by=by, comment=comment)
+        self._save_to_file()
         return True
 
     def cancel(self, approval_id: str) -> bool:
@@ -198,6 +259,7 @@ class ApprovalManager:
         if not request:
             return False
         request.cancel()
+        self._save_to_file()
         return True
 
     def list_pending(self, run_id: Optional[str] = None) -> List[ApprovalRequest]:

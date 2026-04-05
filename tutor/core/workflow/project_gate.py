@@ -21,20 +21,14 @@ import logging
 from typing import Any, Dict, Optional
 
 from .base import WorkflowStep, WorkflowContext, WorkflowPauseError
-from .approval import ApprovalManager, ApprovalStatus
+from .approval import ApprovalManager, ApprovalStatus, approval_manager
 
 logger = logging.getLogger(__name__)
 
-# 全局审批管理器
-_approval_manager: Optional[ApprovalManager] = None
-
-
+# 使用 approval.py 中的全局单例
 def get_approval_manager() -> ApprovalManager:
     """获取审批管理器单例"""
-    global _approval_manager
-    if _approval_manager is None:
-        _approval_manager = ApprovalManager()
-    return _approval_manager
+    return approval_manager
 
 
 class ProjectGateStep(WorkflowStep):

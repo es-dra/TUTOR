@@ -450,6 +450,113 @@ def create_app() -> "FastAPI":
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
         return success_response(data={"run_id": run_id, "status": "deleted"})
 
+    @app.post("/runs/{run_id}/retry", tags=["workflow"])
+    async def retry_run(run_id: str):
+        """重试失败的工作流，使用相同的参数创建新的运行"""
+        original_run = run_storage.get_run(run_id)
+        if not original_run:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+        if original_run.get("status") not in ("failed", "completed", "paused"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only failed/completed/paused runs can be retried. Current status: {original_run.get('status')}"
+            )
+
+        # 创建新的运行，使用原始参数
+        new_run_id = str(uuid.uuid4())[:8]
+        run_storage.create_run(
+            run_id=new_run_id,
+            workflow_type=original_run.get("workflow_type"),
+            params=original_run.get("params", {}),
+            config=original_run.get("config", {}),
+        )
+
+        # 启动工作流
+        asyncio.create_task(
+            _execute_workflow(new_run_id, RunRequest(
+                workflow_type=original_run.get("workflow_type"),
+                params=original_run.get("params", {}),
+                config=original_run.get("config", {}),
+            ), run_storage, broadcaster)
+        )
+
+        return success_response(data={
+            "original_run_id": run_id,
+            "new_run_id": new_run_id,
+            "message": f"Workflow retry started. New Run ID: {new_run_id}"
+        })
+
+    @app.post("/runs/batch-delete", tags=["workflow"])
+    async def batch_delete_runs(request: Dict[str, Any]):
+        """批量删除工作流
+
+        Body: {"run_ids": ["id1", "id2", ...]}
+        """
+        run_ids = request.get("run_ids", [])
+        if not run_ids:
+            raise HTTPException(status_code=400, detail="run_ids is required")
+        deleted = []
+        failed = []
+        for run_id in run_ids:
+            success = run_storage.delete_run(run_id)
+            if success:
+                deleted.append(run_id)
+            else:
+                failed.append(run_id)
+        return success_response(data={"deleted": deleted, "failed": failed, "total": len(run_ids)})
+
+    @app.delete("/runs/cleanup", tags=["workflow"])
+    async def cleanup_old_runs(
+        status: Optional[str] = None,
+        older_than_days: int = 7,
+        dry_run: bool = False,
+    ):
+        """清理旧工作流
+
+        Query params:
+        - status: 筛选状态 (completed, failed)
+        - older_than_days: 清理多少天前的数据 (默认7天)
+        - dry_run: 是否只返回数量不实际删除
+        """
+        from datetime import datetime, timedelta, timezone
+        cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+
+        all_runs = run_storage.list_runs(limit=1000, offset=0).get("runs", [])
+
+        to_delete = []
+        for run in all_runs:
+            # 只处理已完成或失败的状态
+            if status and run.get("status") != status:
+                continue
+            if run.get("status") not in ("completed", "failed"):
+                continue
+            # 检查更新时间
+            updated_at = run.get("updated_at")
+            if updated_at:
+                if isinstance(updated_at, str):
+                    updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                if updated_at < cutoff:
+                    to_delete.append(run["run_id"])
+
+        if dry_run:
+            return success_response(data={
+                "count": len(to_delete),
+                "run_ids": to_delete[:50],  # 只返回前50个预览
+                "message": f"Found {len(to_delete)} runs older than {older_than_days} days"
+            })
+
+        deleted = []
+        for run_id in to_delete:
+            if run_storage.delete_run(run_id):
+                deleted.append(run_id)
+
+        return success_response(data={
+            "deleted": len(deleted),
+            "total_found": len(to_delete),
+            "older_than_days": older_than_days
+        })
+
     @app.patch("/runs/{run_id}/tags", tags=["workflow"])
     async def update_run_tags(run_id: str, tags: Dict[str, Any]):
         """更新工作流标签（用于归档、收藏等）
@@ -470,7 +577,7 @@ def create_app() -> "FastAPI":
 
         # 返回更新后的记录
         updated_run = run_storage.get_run(run_id)
-        return updated_run
+        return success_response(data=updated_run)
 
     @app.post("/runs/{run_id}/cancel", tags=["workflow"])
     async def cancel_run(run_id: str):
@@ -567,14 +674,28 @@ def create_app() -> "FastAPI":
 
     @app.post("/approvals/{approval_id}/approve", tags=["approvals"])
     async def approve_request(approval_id: str, comment: Optional[str] = ""):
-        """Approve an approval request"""
+        """Approve an approval request and resume the associated workflow"""
         success = am.approve(approval_id, comment=comment or "")
         if not success:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot approve '{approval_id}'. Not found or already resolved.",
             )
+
+        # Trigger workflow resume
         request = am.get_request(approval_id)
+        if request and request.run_id:
+            # Try to find and resume the paused workflow
+            run = run_storage.get_run(request.run_id)
+            if run and run.get("status") == "paused":
+                # Import here to avoid circular imports
+                from tutor.core.workflow.engine import WorkflowEngine
+                engine = WorkflowEngine()
+                # Resume in background
+                asyncio.create_task(
+                    _resume_workflow_async(request.run_id, engine, None, None)
+                )
+
         return request.to_dict()
 
     @app.post("/approvals/{approval_id}/reject", tags=["approvals"])

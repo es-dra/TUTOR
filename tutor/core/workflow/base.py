@@ -107,14 +107,14 @@ class CheckpointData:
         data_dict = self.to_dict()
         content = json.dumps(data_dict, ensure_ascii=False).encode()
         data_dict['_crc32'] = zlib.crc32(content) & 0xffffffff
-        with open(path, 'w') as f:
+        with open(path, 'w', encoding='utf-8') as f:
             json.dump(data_dict, f, indent=2, ensure_ascii=False)
         logger.debug(f"Checkpoint saved: {path}")
     
     @classmethod
     def load(cls, path: Path) -> 'CheckpointData':
         """从文件加载检查点"""
-        with open(path, 'r') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
         # CRC32 校验
         stored_crc = data.get('_crc32')

@@ -116,6 +116,7 @@ class ModelGateway:
             "critic": "deepseek-chat",
             "pragmatist": "deepseek-chat",
             "expert": "deepseek-chat",
+            "skeptic": "deepseek-chat",
             "coder": "deepseek-coder",
         },
         "openai": DEFAULT_MODELS.copy(),
@@ -139,7 +140,7 @@ class ModelGateway:
         ],
         "medium": [
             "debater_a", "debater_b", "analyst", "writer", "supervisor",
-            "reviewer", "expert",
+            "reviewer", "expert", "skeptic",
         ],
         "low": [
             "executor", "polisher", "analyzer", "critic", "pragmatist",

@@ -132,7 +132,7 @@ class LiteratureAnalysisStep(WorkflowStep):
                 "analysis": analysis
             }
 
-        with ThreadPoolExecutor(max_workers=min(4, len(papers))) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, min(4, len(papers)))) as executor:
             futures = {executor.submit(analyze_paper_wrapper, paper): paper for paper in papers}
             for future in as_completed(futures):
                 try:
@@ -158,13 +158,15 @@ class LiteratureAnalysisStep(WorkflowStep):
         }
         
         result = {
-            "analysis": summary,
-            "paper_analyses": all_analyses,
-            "concepts": list(key_concepts)
+            "literature_analysis": {
+                "analysis": summary,
+                "paper_analyses": all_analyses,
+                "concepts": list(key_concepts)
+            }
         }
-        
+
         logger.info(f"Literature analysis complete: {len(key_concepts)} concepts identified")
-        
+
         return result
     
     def _analyze_single_paper(self, paper) -> str:
@@ -347,22 +349,26 @@ class IdeaDebateStep(WorkflowStep):
             {
                 "name": "Innovator",
                 "persona": "You are a creative researcher who loves exploring novel ideas and breakthrough approaches. Think outside the box.",
-                "goal": "Propose innovative and ambitious research ideas"
+                "goal": "Propose innovative and ambitious research ideas",
+                "description": "Creative researcher proposing innovative ideas"
             },
             {
                 "name": "Skeptic",
                 "persona": "You are a critical thinker who challenges assumptions and identifies potential flaws. Be constructive but rigorous.",
-                "goal": "Critique ideas and identify risks or weaknesses"
+                "goal": "Critique ideas and identify risks or weaknesses",
+                "description": "Critical thinker challenging assumptions"
             },
             {
                 "name": "Pragmatist",
                 "persona": "You are a practical researcher focused on feasibility and implementation. Consider resources, timeline, and technical challenges.",
-                "goal": "Evaluate feasibility and propose practical improvements"
+                "goal": "Evaluate feasibility and propose practical improvements",
+                "description": "Practical researcher evaluating feasibility"
             },
             {
                 "name": "Expert",
                 "persona": "You are a domain expert with deep knowledge of the field. Provide insights on related work and state-of-the-art.",
-                "goal": "Ensure ideas are grounded in current research and identify relevant literature"
+                "goal": "Ensure ideas are grounded in current research and identify relevant literature",
+                "description": "Domain expert providing research insights"
             }
         ]
 
@@ -608,6 +614,10 @@ class IdeaDebateStep(WorkflowStep):
                 context,
             )
             logger.info(f"Cross-model debate complete: {len(result.get('debate_ideas', []))} ideas")
+            # Save all results to context for approval gate
+            context.set_state("debate_ideas", result.get("debate_ideas", []))
+            context.set_state("final_ideas", result.get("final_ideas", []))
+            context.set_state("debate_quality", result.get("debate_quality", "unknown"))
             return result
         # ===================================
 
@@ -666,6 +676,11 @@ class IdeaDebateStep(WorkflowStep):
             }
 
         logger.info(f"Idea debate complete: {len(evaluated_ideas)} ideas evaluated")
+
+        # Save all results to context for approval gate
+        context.set_state("debate_ideas", evaluated_ideas)
+        context.set_state("final_ideas", result["final_ideas"])
+        context.set_state("debate_quality", result["debate_quality"])
 
         return result
     
@@ -771,7 +786,7 @@ Keep it concise (one paragraph).
                         "round": round_num + 1
                     }
 
-            with ThreadPoolExecutor(max_workers=len(self.roles)) as executor:
+            with ThreadPoolExecutor(max_workers=max(1, len(self.roles))) as executor:
                 futures = {executor.submit(get_role_response, role): role for role in self.roles}
                 round_messages = []
                 for future in as_completed(futures):
@@ -1152,7 +1167,7 @@ Example: Innovation: 0.85, Feasibility: 0.65
                 idea_data["feasibility"] = 0.5
             return idea_data
 
-        with ThreadPoolExecutor(max_workers=len(debated_ideas)) as executor:
+        with ThreadPoolExecutor(max_workers=max(1, len(debated_ideas))) as executor:
             evaluated = list(executor.map(evaluate_one, debated_ideas))
 
         evaluated.sort(key=lambda x: (x["innovation"] + x["feasibility"]) / 2, reverse=True)
@@ -1163,7 +1178,19 @@ Example: Innovation: 0.85, Feasibility: 0.65
         innovation = self._extract_score(response, r'Innovation:\s*([\d.]+)')
         feasibility = self._extract_score(response, r'Feasibility:\s*([\d.]+)')
         return innovation, feasibility
-    
+
+    def _extract_score(self, text: str, pattern: str) -> float:
+        """从文本提取评分"""
+        import re
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                score = float(match.group(1))
+                return max(0, min(1, score))
+            except:
+                pass
+        return 0.5
+
     def _extract_pros(self, debate_log: List[Dict]) -> List[str]:
         """从辩论日志提取优点"""
         # MVP: 简化提取，实际需要更智能的提取
@@ -1590,7 +1617,7 @@ class IdeaApprovalGateStep(WorkflowStep):
         Raises:
             WorkflowPauseError: 需要暂停等待用户审批
         """
-        from ..base import WorkflowPauseError
+        from .base import WorkflowPauseError
 
         # 获取辩论结果
         debate_ideas = context.get_state("debate_ideas", [])
@@ -1615,11 +1642,11 @@ class IdeaApprovalGateStep(WorkflowStep):
             "total_ideas": len(debate_ideas),
         }
 
-        # 创建审批请求 ID
-        approval_id = f"{self.project_id}_idea_approval"
+        # 创建审批请求 ID - 使用 workflow_id 确保唯一性
+        approval_id = f"{context.workflow_id}_idea_approval"
 
         # 检查是否已有审批结果
-        from ..project_gate import get_approval_manager
+        from .project_gate import get_approval_manager
         manager = get_approval_manager()
         existing = manager.get_request(approval_id)
 

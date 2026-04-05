@@ -487,21 +487,64 @@ class AutoArxivSearchStep(WorkflowStep):
         }
 
     def _search_arxiv(self, query: str) -> List[Dict[str, Any]]:
-        """搜索 arXiv
+        """搜索 arXiv API
 
-        注意：这里需要接入实际的 arXiv API 或使用外部搜索服务
-        当前为简化实现，返回空列表。
-        实际使用时可以通过接入 arXiv API 或语义搜索服务。
+        使用 arXiv OpenSearch API 搜索论文。
         """
-        # TODO: 接入 arXiv API 或 Semantic Scholar API
-        # 示例实现：
-        # from tutor.core.external.arxiv import ArxivClient
-        # client = ArxivClient()
-        # results = client.search(query, limit=self.max_results)
-        # return results
+        import urllib.parse
+        import urllib.request
+        import xml.etree.ElementTree as ET
 
-        logger.info(f"ArXiv search not yet implemented for query: {query}")
-        return []
+        try:
+            # 构建 arXiv API 查询
+            base_url = "http://export.arxiv.org/api/query"
+            params = urllib.parse.urlencode({
+                "search_query": f"all:{query}",
+                "start": 0,
+                "max_results": self.max_results,
+                "sortBy": "relevance",
+                "sortOrder": "descending",
+            })
+            url = f"{base_url}?{params}"
+
+            logger.info(f"Searching arXiv: {url}")
+
+            with urllib.request.urlopen(url, timeout=10) as response:
+                data = response.read().decode("utf-8")
+
+            # 解析 XML 响应
+            root = ET.fromstring(data)
+            ns = {"atom": "http://www.w3.org/2005/Atom", "arxiv": "http://arxiv.org/schemas/atom"}
+
+            results = []
+            for entry in root.findall("atom:entry", ns):
+                title = entry.find("atom:title", ns)
+                summary = entry.find("atom:summary", ns)
+                link_elem = entry.find('atom:link[@title="pdf"]', ns)
+                id_elem = entry.find("atom:id", ns)
+
+                # 提取 arXiv ID
+                arxiv_id = ""
+                if id_elem is not None:
+                    arxiv_id = id_elem.text.split("/")[-1]
+
+                # 构建 arXiv URL
+                arxiv_url = f"https://arxiv.org/abs/{arxiv_id}" if arxiv_id else ""
+
+                results.append({
+                    "title": title.text.strip().replace("\n", " ") if title is not None else "",
+                    "abstract": summary.text.strip() if summary is not None else "",
+                    "url": arxiv_url,
+                    "arxiv_url": arxiv_url,
+                    "arxiv_id": arxiv_id,
+                })
+
+            logger.info(f"ArXiv search returned {len(results)} results for query: {query}")
+            return results
+
+        except Exception as e:
+            logger.error(f"ArXiv search failed: {e}")
+            return []
 
     def validate(self, context: WorkflowContext) -> List[str]:
         """验证前提条件"""

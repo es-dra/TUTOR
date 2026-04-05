@@ -7,31 +7,35 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/run': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/runs': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/approvals': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/metrics': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
       '/stats': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8092',
+        changeOrigin: true,
+      },
+      '/events': {
+        target: 'http://localhost:8092',
         changeOrigin: true,
       },
     },

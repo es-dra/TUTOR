@@ -1,5 +1,5 @@
-// TUTOR API 客户端
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+// TUTOR API 客户端 - 使用相对路径，Vite 开发服务器代理到后端
+const API_BASE = '';
 
 /**
  * 解析统一 API 响应格式
@@ -75,6 +75,32 @@ export const api = {
       method: 'DELETE'
     });
     return parseResponse(res, '删除');
+  },
+
+  // 批量删除运行
+  async batchDeleteRuns(runIds) {
+    const res = await fetch(`${API_BASE}/runs/batch-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run_ids: runIds })
+    });
+    return parseResponse(res, '批量删除');
+  },
+
+  // 清理旧运行 (dry_run=true 只返回预览)
+  async cleanupOldRuns(status = null, olderThanDays = 7, dryRun = false) {
+    let url = `${API_BASE}/runs/cleanup?older_than_days=${olderThanDays}&dry_run=${dryRun}`;
+    if (status) url += `&status=${status}`;
+    const res = await fetch(url);
+    return parseResponse(res, '清理');
+  },
+
+  // 重试失败的工作流
+  async retryRun(runId) {
+    const res = await fetch(`${API_BASE}/runs/${runId}/retry`, {
+      method: 'POST'
+    });
+    return parseResponse(res, '重试');
   },
 
   // 更新运行标签（归档/收藏）

@@ -13,7 +13,7 @@ from ...core.workflow.idea import IdeaFlow
 from ...core.workflow.experiment import ExperimentFlow
 from ...core.workflow.review import ReviewFlow
 from ...core.workflow.write import WriteFlow
-from ...core.model import get_model_config
+from ...core.model import create_gateway
 from ...core.storage import StorageManager
 from ..models import (
     RunWorkflowRequest,
@@ -78,6 +78,7 @@ async def run_workflow(
             run_id=run_id,
             workflow_name=workflow_name,
             params=request.parameters,
+            config_override=request.config_override,
         )
     )
     # Optional: attach to request state to prevent GC; but for demo, background is fine.
@@ -103,28 +104,58 @@ async def get_workflow_status(run_id: str) -> WorkflowRunSummary:
     )
 
 
-async def execute_workflow(run_id: str, workflow_name: WorkflowName, params: Dict[str, Any]):
+async def execute_workflow(run_id: str, workflow_name: WorkflowName, params: Dict[str, Any], config_override: Dict[str, Any] = None):
     """Execute workflow logic with event emissions."""
     try:
-        # Get model config and storage
-        model_cfg = get_model_config()
+        # Get model config - use config_override if provided, otherwise extract provider config from params or params.config
+        if config_override:
+            model_config = config_override
+        else:
+            # Check params.config first (nested config), then params directly
+            config_section = params.get("config", {})
+            model_config = {
+                "provider": config_section.get("provider") or params.get("provider"),
+                "api_base": config_section.get("api_base") or params.get("api_base"),
+                "api_key": config_section.get("api_key") or params.get("api_key"),
+            }
+            # Remove None values
+            model_config = {k: v for k, v in model_config.items() if v is not None}
+        model_cfg = create_gateway(model_config)
         storage = StorageManager()
 
-        # Instantiate the workflow
+        # Instantiate the workflow with correct parameters
+        # Workflow.__init__ expects: workflow_id, config, storage_path, model_gateway, broadcaster
         WorkflowCls = WORKFLOW_CLASSES[workflow_name]
-        workflow = WorkflowCls(model_config=model_cfg, storage=storage, **params)
+        workflow = WorkflowCls(
+            workflow_id=run_id,
+            config=params,
+            storage_path=storage.project_dir,
+            model_gateway=model_cfg,
+        )
 
-        await emit_log(run_id, "info", "Executing workflow...")
+        await emit_log(run_id, "info", f"Executing workflow with {len(params)} parameters...")
 
         # Run in thread executor to avoid blocking event loop
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, workflow.run)
 
-        # Mark completed
-        RUNS[run_id]["status"] = WorkflowStatus.COMPLETED
-        RUNS[run_id]["completed_at"] = datetime.now(timezone.utc)
-        await emit_log(run_id, "info", "Workflow completed successfully")
-        await emit_workflow_finished(run_id, WorkflowStatus.COMPLETED, final_output=result)
+        # Handle based on actual workflow result status
+        if result.status == WorkflowStatus.PAUSED:
+            RUNS[run_id]["status"] = WorkflowStatus.PAUSED
+            RUNS[run_id]["error"] = result.error
+            await emit_log(run_id, "warning", f"Workflow paused: {result.error}")
+            await emit_workflow_finished(run_id, WorkflowStatus.PAUSED, error=result.error)
+        elif result.status == WorkflowStatus.FAILED:
+            RUNS[run_id]["status"] = WorkflowStatus.FAILED
+            RUNS[run_id]["error"] = result.error
+            await emit_log(run_id, "error", f"Workflow failed: {result.error}")
+            await emit_workflow_finished(run_id, WorkflowStatus.FAILED, error=result.error)
+        else:
+            # Mark completed
+            RUNS[run_id]["status"] = WorkflowStatus.COMPLETED
+            RUNS[run_id]["completed_at"] = datetime.now(timezone.utc)
+            await emit_log(run_id, "info", "Workflow completed successfully")
+            await emit_workflow_finished(run_id, WorkflowStatus.COMPLETED, final_output=result)
 
     except Exception as e:
         RUNS[run_id]["status"] = WorkflowStatus.FAILED
