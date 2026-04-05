@@ -61,7 +61,9 @@ async def emit_workflow_started(run_id: str, workflow_name: str, started_at: dat
     await broadcaster.broadcast(msg)
 
 
-async def emit_step_completed(run_id: str, step_name: str, status: str, message: Optional[str] = None):
+async def emit_step_completed(
+    run_id: str, step_name: str, status: str, message: Optional[str] = None
+):
     msg = SSEMessage(
         event="step_completed",
         run_id=run_id,
@@ -71,16 +73,26 @@ async def emit_step_completed(run_id: str, step_name: str, status: str, message:
 
 
 async def emit_log(run_id: str, level: str, message: str):
-    log_event = LogEvent(run_id=run_id, level=level, message=message, timestamp=datetime.now(timezone.utc))
+    log_event = LogEvent(
+        run_id=run_id,
+        level=level,
+        message=message,
+        timestamp=datetime.now(timezone.utc),
+    )
     msg = SSEMessage(
         event="log",
         run_id=run_id,
-        data=log_event.dict(),
+        data=log_event.model_dump(),
     )
     await broadcaster.broadcast(msg)
 
 
-async def emit_workflow_finished(run_id: str, status: str, final_output: Optional[Dict[str, Any]] = None, error: Optional[str] = None):
+async def emit_workflow_finished(
+    run_id: str,
+    status: str,
+    final_output: Optional[Dict[str, Any]] = None,
+    error: Optional[str] = None,
+):
     msg = SSEMessage(
         event="workflow_finished",
         run_id=run_id,

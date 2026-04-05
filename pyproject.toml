@@ -9,7 +9,7 @@ line_length = 88
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=core --cov=skills --cov-report=html --cov-report=term"
+addopts = "-v --cov=core --cov-report=html --cov-report=term"
 asyncio_mode = "auto"
 
 [build-system]
@@ -83,9 +83,6 @@ dev = [
     "pre-commit>=3.0.0",
     "factory-boy>=3.3.0",
     "faker>=19.0.0",
-]
-web = [
-    "react==18.2.0; platform_system!='Windows'",
 ]
 test = [
     "pytest>=7.4.0",

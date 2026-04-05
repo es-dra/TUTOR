@@ -160,13 +160,10 @@ async def api_key_auth_middleware(request: Request, call_next):
         "/api/v1/auth/register",
         "/api/v1/auth/login",
         "/api/v1/auth/refresh",
-        "/api/v1/providers",
     }
 
     # Public paths that start with these prefixes (no auth required)
-    public_prefixes = [
-        "/api/v1/providers/",
-    ]
+    public_prefixes = []
 
     if request.url.path in public_paths or request.url.path.startswith("/docs"):
         return await call_next(request)
@@ -206,6 +203,7 @@ class EventBroadcaster:
 
     def __init__(self):
         self._subscribers: Dict[str, List[asyncio.Queue]] = {}
+        self._cancel_events: Dict[str, asyncio.Event] = {}
 
     async def subscribe(self, run_id: str) -> asyncio.Queue:
         """订阅指定run的事件流"""
@@ -259,6 +257,19 @@ class EventBroadcaster:
         """发送完成事件并关闭队列"""
         await self.emit(run_id, "complete", result)
         await self.unsubscribe(run_id)
+        self._cancel_events.pop(run_id, None)
+
+    def signal_cancel(self, run_id: str) -> None:
+        """发送取消信号给正在运行的工作流"""
+        if run_id not in self._cancel_events:
+            self._cancel_events[run_id] = asyncio.Event()
+        self._cancel_events[run_id].set()
+        logger.info(f"Cancel signal sent for run {run_id}")
+
+    def is_cancelled(self, run_id: str) -> bool:
+        """检查工作流是否已被取消"""
+        event = self._cancel_events.get(run_id)
+        return event.is_set() if event else False
 
 
 # 全局广播器单例
@@ -297,6 +308,12 @@ class RunResponse(BaseModel):
     status: str
     workflow_type: str
     message: str
+
+
+class BatchDeleteRequest(BaseModel):
+    """批量删除请求"""
+
+    run_ids: List[str] = Field(default_factory=list, description="要删除的运行ID列表")
 
 
 class RunStatusResponse(BaseModel):
@@ -566,24 +583,23 @@ def create_app() -> "FastAPI":
         )
 
     @app.post("/runs/batch-delete", tags=["workflow"])
-    async def batch_delete_runs(request: Dict[str, Any]):
+    async def batch_delete_runs(request: BatchDeleteRequest):
         """批量删除工作流
 
         Body: {"run_ids": ["id1", "id2", ...]}
         """
-        run_ids = request.get("run_ids", [])
-        if not run_ids:
+        if not request.run_ids:
             raise HTTPException(status_code=400, detail="run_ids is required")
         deleted = []
         failed = []
-        for run_id in run_ids:
+        for run_id in request.run_ids:
             success = run_storage.delete_run(run_id)
             if success:
                 deleted.append(run_id)
             else:
                 failed.append(run_id)
         return success_response(
-            data={"deleted": deleted, "failed": failed, "total": len(run_ids)}
+            data={"deleted": deleted, "failed": failed, "total": len(request.run_ids)}
         )
 
     @app.delete("/runs/cleanup", tags=["workflow"])
@@ -602,31 +618,30 @@ def create_app() -> "FastAPI":
         from datetime import datetime, timedelta, timezone
 
         cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        cutoff_str = cutoff.isoformat()
 
-        all_runs = run_storage.list_runs(limit=1000, offset=0).get("runs", [])
+        # 使用 SQL 查询直接获取符合条件的 run_ids，避免加载全部数据到内存
+        conn = run_storage._get_conn()
+        cursor = conn.cursor()
 
-        to_delete = []
-        for run in all_runs:
-            # 只处理已完成或失败的状态
-            if status and run.get("status") != status:
-                continue
-            if run.get("status") not in ("completed", "failed"):
-                continue
-            # 检查更新时间
-            updated_at = run.get("updated_at")
-            if updated_at:
-                if isinstance(updated_at, str):
-                    updated_at = datetime.fromisoformat(
-                        updated_at.replace("Z", "+00:00")
-                    )
-                if updated_at < cutoff:
-                    to_delete.append(run["run_id"])
+        if status:
+            cursor.execute(
+                "SELECT run_id FROM workflow_runs WHERE status = ? AND updated_at < ? ORDER BY updated_at ASC",
+                (status, cutoff_str),
+            )
+        else:
+            cursor.execute(
+                "SELECT run_id FROM workflow_runs WHERE status IN ('completed', 'failed') AND updated_at < ? ORDER BY updated_at ASC",
+                (cutoff_str,),
+            )
+
+        to_delete = [row["run_id"] for row in cursor.fetchall()]
 
         if dry_run:
             return success_response(
                 data={
                     "count": len(to_delete),
-                    "run_ids": to_delete[:50],  # 只返回前50个预览
+                    "run_ids": to_delete[:50],
                     "message": f"Found {len(to_delete)} runs older than {older_than_days} days",
                 }
             )
@@ -668,7 +683,12 @@ def create_app() -> "FastAPI":
 
     @app.post("/runs/{run_id}/cancel", tags=["workflow"])
     async def cancel_run(run_id: str):
-        """取消运行中的工作流"""
+        """取消运行中的工作流
+
+        1. 更新数据库状态为 cancelled
+        2. 发送取消信号到正在运行的 asyncio task
+        3. 发送 SSE 取消事件通知前端
+        """
         run = run_storage.get_run(run_id)
         if not run:
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
@@ -679,6 +699,14 @@ def create_app() -> "FastAPI":
             )
 
         run_storage.update_status(run_id, "cancelled")
+
+        # 发送取消信号到正在运行的工作流
+        broadcaster.signal_cancel(run_id)
+
+        # 通知 SSE 订阅者
+        await broadcaster.emit(
+            run_id, "cancelled", {"message": "Run cancelled by user"}
+        )
 
         return {"status": "cancelled", "run_id": run_id}
 
@@ -902,7 +930,25 @@ async def _execute_workflow(
         await broadcaster.emit(run_id, "started", {"run_id": run_id})
 
         workflow = engine.create_workflow(workflow_class, run_id, request.params)
-        result = await asyncio.to_thread(engine.run_workflow, run_id)
+
+        # 使用后台任务运行，支持取消
+        task = asyncio.create_task(asyncio.to_thread(engine.run_workflow, run_id))
+
+        # 等待任务完成或被取消
+        try:
+            result = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            # 工作流被取消，等待任务实际停止
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+            run_storage.update_status(run_id, "cancelled")
+            await broadcaster.emit(
+                run_id, "cancelled", {"message": "Run cancelled by user"}
+            )
+            return
 
         # 5. 更新状态
         run_storage.update_status(

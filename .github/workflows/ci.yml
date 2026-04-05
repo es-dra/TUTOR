@@ -63,15 +63,15 @@ jobs:
 
       - name: Check code formatting (Black)
         run: |
-          black --check tutor/ tests/ || true
+          black --check tutor/ tests/
 
       - name: Check import order (isort)
         run: |
-          isort --check-only --diff tutor/ tests/ || true
+          isort --check-only --diff tutor/ tests/
 
       - name: Type check (mypy)
         run: |
-          mypy tutor/ --ignore-missing-imports || true
+          mypy tutor/ --ignore-missing-imports
 
   build:
     name: Build
