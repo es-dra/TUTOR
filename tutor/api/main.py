@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 class WorkflowType:
     """工作流类型常量"""
+
     IDEA = "idea"
     EXPERIMENT = "experiment"
     REVIEW = "review"
@@ -184,33 +185,55 @@ class EventBroadcaster:
     """
 
     def __init__(self):
-        self._subscribers: Dict[str, asyncio.Queue] = {}
+        self._subscribers: Dict[str, List[asyncio.Queue]] = {}
 
     async def subscribe(self, run_id: str) -> asyncio.Queue:
         """订阅指定run的事件流"""
         queue = asyncio.Queue(maxsize=100)
-        self._subscribers[run_id] = queue
-        logger.debug(f"SSE subscriber added for run {run_id}")
+        if run_id not in self._subscribers:
+            self._subscribers[run_id] = []
+        self._subscribers[run_id].append(queue)
+        logger.debug(
+            f"SSE subscriber added for run {run_id} (total: {len(self._subscribers[run_id])})"
+        )
         return queue
 
-    async def unsubscribe(self, run_id: str) -> None:
+    async def unsubscribe(
+        self, run_id: str, queue: Optional[asyncio.Queue] = None
+    ) -> None:
         """取消订阅"""
-        self._subscribers.pop(run_id, None)
+        if run_id not in self._subscribers:
+            return
+        if queue:
+            self._subscribers[run_id] = [
+                q for q in self._subscribers[run_id] if q is not queue
+            ]
+        else:
+            self._subscribers[run_id] = []
+        if not self._subscribers[run_id]:
+            del self._subscribers[run_id]
         logger.debug(f"SSE subscriber removed for run {run_id}")
 
     async def emit(self, run_id: str, event_type: str, data: Any) -> None:
         """发送事件到所有订阅者"""
-        queue = self._subscribers.get(run_id)
-        if queue:
+        queues = self._subscribers.get(run_id, [])
+        if queues:
             event = {
                 "type": event_type,
                 "data": data,
                 "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             }
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                logger.warning(f"Event queue full for run {run_id}, dropping event")
+            dead_queues = []
+            for queue in queues:
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    logger.warning(f"Event queue full for run {run_id}, dropping event")
+                except Exception:
+                    dead_queues.append(queue)
+            for dead in dead_queues:
+                if dead in queues:
+                    queues.remove(dead)
 
     async def emit_complete(self, run_id: str, result: Any) -> None:
         """发送完成事件并关闭队列"""
@@ -227,6 +250,7 @@ broadcaster = EventBroadcaster()
 try:
     from pydantic import BaseModel, Field
 except ImportError:
+
     class BaseModel:
         def __init__(self, **kwargs):
             for k, v in kwargs.items():
@@ -238,13 +262,17 @@ except ImportError:
 
 class RunRequest(BaseModel):
     """工作流执行请求"""
-    workflow_type: str = Field(..., description="工作流类型: idea/experiment/review/write")
+
+    workflow_type: str = Field(
+        ..., description="工作流类型: idea/experiment/review/write"
+    )
     params: Dict[str, Any] = Field(default_factory=dict, description="工作流参数")
     config: Optional[Dict[str, Any]] = Field(default=None, description="运行配置覆盖")
 
 
 class RunResponse(BaseModel):
     """工作流执行响应"""
+
     run_id: str
     status: str
     workflow_type: str
@@ -253,6 +281,7 @@ class RunResponse(BaseModel):
 
 class RunStatusResponse(BaseModel):
     """运行状态查询响应"""
+
     run_id: str
     status: str
     workflow_type: str
@@ -264,11 +293,13 @@ class RunStatusResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """错误响应"""
+
     error: str
     detail: Optional[str] = None
 
 
 # --- Application Factory ---
+
 
 def create_app() -> "FastAPI":
     """创建FastAPI应用"""
@@ -276,9 +307,7 @@ def create_app() -> "FastAPI":
         from fastapi import FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError:
-        logger.error(
-            "FastAPI not installed. Install with: pip install fastapi uvicorn"
-        )
+        logger.error("FastAPI not installed. Install with: pip install fastapi uvicorn")
         raise
 
     app = FastAPI(
@@ -288,11 +317,14 @@ def create_app() -> "FastAPI":
     )
 
     # 添加中间件
+    allowed_origins = os.environ.get(
+        "TUTOR_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173"
+    ).split(",")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -304,6 +336,7 @@ def create_app() -> "FastAPI":
 
     # --- Database storage ---
     from tutor.core.storage.workflow_runs import RunStorage
+
     run_storage = RunStorage()
 
     # --- Routes ---
@@ -311,12 +344,18 @@ def create_app() -> "FastAPI":
     @app.get("/health", tags=["system"])
     async def health_check():
         """健康检查（兼容性）"""
-        return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"}
+        return {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        }
 
     @app.get("/health/live", tags=["system"])
     async def health_live():
         """Liveness Probe - 应用是否存活"""
-        return {"status": "alive", "timestamp": datetime.now(timezone.utc).isoformat() + "Z"}
+        return {
+            "status": "alive",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        }
 
     @app.get("/health/ready", tags=["system"])
     async def health_ready():
@@ -329,6 +368,7 @@ def create_app() -> "FastAPI":
         try:
             import shutil
             from pathlib import Path
+
             storage_path = Path.cwd()
             usage = shutil.disk_usage(storage_path)
             checks["disk_ok"] = usage.percent < 95
@@ -354,8 +394,11 @@ def create_app() -> "FastAPI":
     async def prometheus_metrics():
         """Prometheus metrics endpoint"""
         from tutor.api.prometheus import get_metrics
+
         metrics = get_metrics()
-        return StreamingResponse(iter([metrics.format_prometheus()]), media_type="text/plain")
+        return StreamingResponse(
+            iter([metrics.format_prometheus()]), media_type="text/plain"
+        )
 
     @app.post("/run", response_model=RunResponse, tags=["workflow"])
     async def start_run(request: RunRequest):
@@ -433,14 +476,22 @@ def create_app() -> "FastAPI":
     @app.get("/runs/list/archived", tags=["workflow"])
     async def list_archived_runs(limit: int = 100, offset: int = 0):
         """列出已归档的工作流"""
-        runs = run_storage.list_runs_by_tags(["archived"], match_all=False, limit=limit, offset=offset)
-        return paginated_response(items=runs, total=len(runs), limit=limit, offset=offset)
+        runs = run_storage.list_runs_by_tags(
+            ["archived"], match_all=False, limit=limit, offset=offset
+        )
+        return paginated_response(
+            items=runs, total=len(runs), limit=limit, offset=offset
+        )
 
     @app.get("/runs/list/favorites", tags=["workflow"])
     async def list_favorite_runs(limit: int = 100, offset: int = 0):
         """列出收藏的工作流"""
-        runs = run_storage.list_runs_by_tags(["favorite"], match_all=False, limit=limit, offset=offset)
-        return paginated_response(items=runs, total=len(runs), limit=limit, offset=offset)
+        runs = run_storage.list_runs_by_tags(
+            ["favorite"], match_all=False, limit=limit, offset=offset
+        )
+        return paginated_response(
+            items=runs, total=len(runs), limit=limit, offset=offset
+        )
 
     @app.delete("/runs/{run_id}", tags=["workflow"])
     async def delete_run(run_id: str):
@@ -460,7 +511,7 @@ def create_app() -> "FastAPI":
         if original_run.get("status") not in ("failed", "completed", "paused"):
             raise HTTPException(
                 status_code=400,
-                detail=f"Only failed/completed/paused runs can be retried. Current status: {original_run.get('status')}"
+                detail=f"Only failed/completed/paused runs can be retried. Current status: {original_run.get('status')}",
             )
 
         # 创建新的运行，使用原始参数
@@ -474,18 +525,25 @@ def create_app() -> "FastAPI":
 
         # 启动工作流
         asyncio.create_task(
-            _execute_workflow(new_run_id, RunRequest(
-                workflow_type=original_run.get("workflow_type"),
-                params=original_run.get("params", {}),
-                config=original_run.get("config", {}),
-            ), run_storage, broadcaster)
+            _execute_workflow(
+                new_run_id,
+                RunRequest(
+                    workflow_type=original_run.get("workflow_type"),
+                    params=original_run.get("params", {}),
+                    config=original_run.get("config", {}),
+                ),
+                run_storage,
+                broadcaster,
+            )
         )
 
-        return success_response(data={
-            "original_run_id": run_id,
-            "new_run_id": new_run_id,
-            "message": f"Workflow retry started. New Run ID: {new_run_id}"
-        })
+        return success_response(
+            data={
+                "original_run_id": run_id,
+                "new_run_id": new_run_id,
+                "message": f"Workflow retry started. New Run ID: {new_run_id}",
+            }
+        )
 
     @app.post("/runs/batch-delete", tags=["workflow"])
     async def batch_delete_runs(request: Dict[str, Any]):
@@ -504,7 +562,9 @@ def create_app() -> "FastAPI":
                 deleted.append(run_id)
             else:
                 failed.append(run_id)
-        return success_response(data={"deleted": deleted, "failed": failed, "total": len(run_ids)})
+        return success_response(
+            data={"deleted": deleted, "failed": failed, "total": len(run_ids)}
+        )
 
     @app.delete("/runs/cleanup", tags=["workflow"])
     async def cleanup_old_runs(
@@ -520,6 +580,7 @@ def create_app() -> "FastAPI":
         - dry_run: 是否只返回数量不实际删除
         """
         from datetime import datetime, timedelta, timezone
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
 
         all_runs = run_storage.list_runs(limit=1000, offset=0).get("runs", [])
@@ -535,27 +596,33 @@ def create_app() -> "FastAPI":
             updated_at = run.get("updated_at")
             if updated_at:
                 if isinstance(updated_at, str):
-                    updated_at = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                    updated_at = datetime.fromisoformat(
+                        updated_at.replace("Z", "+00:00")
+                    )
                 if updated_at < cutoff:
                     to_delete.append(run["run_id"])
 
         if dry_run:
-            return success_response(data={
-                "count": len(to_delete),
-                "run_ids": to_delete[:50],  # 只返回前50个预览
-                "message": f"Found {len(to_delete)} runs older than {older_than_days} days"
-            })
+            return success_response(
+                data={
+                    "count": len(to_delete),
+                    "run_ids": to_delete[:50],  # 只返回前50个预览
+                    "message": f"Found {len(to_delete)} runs older than {older_than_days} days",
+                }
+            )
 
         deleted = []
         for run_id in to_delete:
             if run_storage.delete_run(run_id):
                 deleted.append(run_id)
 
-        return success_response(data={
-            "deleted": len(deleted),
-            "total_found": len(to_delete),
-            "older_than_days": older_than_days
-        })
+        return success_response(
+            data={
+                "deleted": len(deleted),
+                "total_found": len(to_delete),
+                "older_than_days": older_than_days,
+            }
+        )
 
     @app.patch("/runs/{run_id}/tags", tags=["workflow"])
     async def update_run_tags(run_id: str, tags: Dict[str, Any]):
@@ -588,8 +655,7 @@ def create_app() -> "FastAPI":
 
         if run["status"] not in ["pending", "running"]:
             raise HTTPException(
-                status_code=400,
-                detail=f"Cannot cancel run in status '{run['status']}'"
+                status_code=400, detail=f"Cannot cancel run in status '{run['status']}'"
             )
 
         run_storage.update_status(run_id, "cancelled")
@@ -626,7 +692,7 @@ def create_app() -> "FastAPI":
                     except asyncio.TimeoutError:
                         yield f"event: heartbeat\ndata: {json.dumps({'ts': datetime.now(timezone.utc).isoformat() + 'Z'})}\n\n"
             finally:
-                await broadcaster.unsubscribe(run_id)
+                await broadcaster.unsubscribe(run_id, queue)
 
         return StreamingResponse(
             generate(),
@@ -669,7 +735,9 @@ def create_app() -> "FastAPI":
         """Get approval details"""
         request = am.get_request(approval_id)
         if not request:
-            raise HTTPException(status_code=404, detail=f"Approval '{approval_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Approval '{approval_id}' not found"
+            )
         return request.to_dict()
 
     @app.post("/approvals/{approval_id}/approve", tags=["approvals"])
@@ -690,6 +758,7 @@ def create_app() -> "FastAPI":
             if run and run.get("status") == "paused":
                 # Import here to avoid circular imports
                 from tutor.core.workflow.engine import WorkflowEngine
+
                 engine = WorkflowEngine()
                 # Resume in background
                 asyncio.create_task(
@@ -715,28 +784,35 @@ def create_app() -> "FastAPI":
         """Cancel an approval request"""
         success = am.cancel(approval_id)
         if not success:
-            raise HTTPException(status_code=404, detail=f"Approval '{approval_id}' not found")
+            raise HTTPException(
+                status_code=404, detail=f"Approval '{approval_id}' not found"
+            )
         return {"status": "cancelled", "approval_id": approval_id}
 
     # --- Auth Routes ---
     # 用户认证端点（无需API Key认证）
     from tutor.api.routes.auth import router as auth_router
+
     app.include_router(auth_router)
 
     # 用户管理端点（无需API Key认证）
     from tutor.api.routes.users import router as users_router
+
     app.include_router(users_router)
 
     # Provider 配置端点
     from tutor.api.routes.providers import router as providers_router
+
     app.include_router(providers_router)
 
     # Project 项目管理端点
     from tutor.api.routes.projects import router as projects_router
+
     app.include_router(projects_router)
 
     # File Upload 端点
     from tutor.api.routes.uploads import router as uploads_router
+
     app.include_router(uploads_router)
 
     return app
@@ -752,12 +828,16 @@ def _load_workflow_classes():
     if not _WORKFLOW_CLASSES:
         try:
             from tutor.core.workflow.idea import IdeaFlow
+
             _WORKFLOW_CLASSES[WorkflowType.IDEA] = IdeaFlow
             from tutor.core.workflow.experiment import ExperimentFlow
+
             _WORKFLOW_CLASSES[WorkflowType.EXPERIMENT] = ExperimentFlow
             from tutor.core.workflow.review import ReviewFlow
+
             _WORKFLOW_CLASSES[WorkflowType.REVIEW] = ReviewFlow
             from tutor.core.workflow.write import WriteFlow
+
             _WORKFLOW_CLASSES[WorkflowType.WRITE] = WriteFlow
         except ImportError as e:
             logger.warning(f"Some workflow classes not available: {e}")

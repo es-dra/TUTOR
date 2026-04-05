@@ -1,0 +1,92 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-openagent.schema.json",
+  "agents": {
+    "sisyphus": {
+      "model": "minimax/minimax-m2.7",
+      "fallback_models": [
+        "minimax/minimax-m2.7-highspeed",
+        "opencode/minimax-m2.7"
+      ]
+    },
+    "prometheus": {
+      "model": "minimax/minimax-m2.7",
+      "fallback_models": [
+        "minimax/minimax-m2.7-highspeed"
+      ]
+    },
+    "atlas": {
+      "model": "minimax/minimax-m2.7-highspeed",
+      "fallback_models": [
+        "minimax/minimax-m2.7"
+      ]
+    },
+    "oracle": {
+      "model": "minimax/minimax-m2.7",
+      "fallback_models": [
+        "minimax/minimax-m2.7-highspeed"
+      ]
+    },
+    "explore": {
+      "model": "minimax/minimax-m2.7-highspeed",
+      "fallback_models": [
+        "minimax/minimax-m2.7"
+      ]
+    },
+    "librarian": {
+      "model": "minimax/minimax-m2.7-highspeed",
+      "fallback_models": [
+        "minimax/minimax-m2.7"
+      ]
+    },
+    "multimodal-looker": {
+      "model": "minimax/minimax-m2.7"
+    }
+  },
+  "categories": {
+    "visual-engineering": {
+      "model": "minimax/minimax-m2.7",
+      "temperature": 0.8,
+      "description": "前端、UI/UX、设计、样式、动画"
+    },
+    "ultrabrain": {
+      "model": "minimax/minimax-m2.7",
+      "temperature": 0.3,
+      "description": "深度逻辑推理、复杂架构决策"
+    },
+    "deep": {
+      "model": "minimax/minimax-m2.7",
+      "temperature": 0.5,
+      "description": "目标导向的自主问题解决"
+    },
+    "quick": {
+      "model": "minimax/minimax-m2.7-highspeed",
+      "temperature": 0.3,
+      "description": "琐碎任务 - 单文件改动、拼写修复"
+    },
+    "tutor-workflow": {
+      "model": "minimax/minimax-m2.7",
+      "temperature": 0.5,
+      "description": "TUTOR 工作流引擎开发（后端 Python/FastAPI）"
+    },
+    "tutor-frontend": {
+      "model": "minimax/minimax-m2.7",
+      "temperature": 0.7,
+      "description": "TUTOR React 前端开发"
+    },
+    "writing": {
+      "model": "minimax/minimax-m2.7-highspeed",
+      "temperature": 0.6,
+      "description": "文档、技术写作"
+    }
+  },
+  "tmux": {
+    "enabled": false,
+    "layout": "main-vertical"
+  },
+  "ralph_loop": {
+    "enabled": true,
+    "default_max_iterations": 100
+  },
+  "disabled_hooks": [],
+  "disabled_skills": []
+}

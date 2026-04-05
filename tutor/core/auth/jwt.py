@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 class TokenPayload(BaseModel):
     """Token载荷"""
+
     sub: str  # user_id
     type: str  # "access" or "refresh"
     jti: str  # JWT ID for revocation
@@ -40,8 +41,11 @@ class JWTManager:
         """
         self.secret_key = secret_key or os.environ.get("AUTH_SECRET_KEY", "")
         if not self.secret_key:
-            # 开发模式使用默认密钥，生产环境应设置AUTH_SECRET_KEY
-            self.secret_key = "dev-secret-key-change-in-production"
+            raise RuntimeError(
+                "AUTH_SECRET_KEY environment variable is not set. "
+                "In production, you MUST set a secure secret key. "
+                "For development, set AUTH_SECRET_KEY=dev-secret-123"
+            )
         self.algorithm = algorithm
         self.access_token_expire_minutes = access_token_expire_minutes
         self.refresh_token_expire_days = refresh_token_expire_days
@@ -66,7 +70,9 @@ class JWTManager:
         Returns:
             JWT token字符串
         """
-        return self._create_token(user_id, "refresh", self.refresh_token_expire_days * 24 * 60)
+        return self._create_token(
+            user_id, "refresh", self.refresh_token_expire_days * 24 * 60
+        )
 
     def _create_token(self, user_id: str, token_type: str, expire_minutes: int) -> str:
         """创建JWT token

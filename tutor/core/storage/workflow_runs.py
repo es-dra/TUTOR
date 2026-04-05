@@ -31,7 +31,7 @@ class RunStorage:
             db_path: 数据库路径
         """
         if isinstance(db_path, str) and db_path.startswith("sqlite:///"):
-            db_path = db_path[len("sqlite:///"):]
+            db_path = db_path[len("sqlite:///") :]
         self.db_path = Path(db_path)
         self._conn = None
         self._lock = threading.Lock()
@@ -42,6 +42,7 @@ class RunStorage:
         with self._lock:
             if self._conn is None:
                 import sqlite3
+
                 self.db_path.parent.mkdir(parents=True, exist_ok=True)
                 self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
                 self._conn.row_factory = sqlite3.Row
@@ -107,7 +108,9 @@ class RunStorage:
 
             if "tags" not in columns:
                 logger.info("Adding 'tags' column to workflow_runs table")
-                cursor.execute("ALTER TABLE workflow_runs ADD COLUMN tags TEXT DEFAULT '[]'")
+                cursor.execute(
+                    "ALTER TABLE workflow_runs ADD COLUMN tags TEXT DEFAULT '[]'"
+                )
                 self._conn.commit()
         except Exception as e:
             logger.warning(f"Migration check failed: {e}")
@@ -138,19 +141,22 @@ class RunStorage:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
             INSERT INTO workflow_runs
             (run_id, workflow_type, status, params, config, started_at, created_at, updated_at)
             VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
-            """, (
-                run_id,
-                workflow_type,
-                json.dumps(params, ensure_ascii=False) if params else None,
-                json.dumps(config, ensure_ascii=False) if config else None,
-                now,
-                now,
-                now,
-            ))
+            """,
+                (
+                    run_id,
+                    workflow_type,
+                    json.dumps(params, ensure_ascii=False) if params else None,
+                    json.dumps(config, ensure_ascii=False) if config else None,
+                    now,
+                    now,
+                    now,
+                ),
+            )
 
             conn.commit()
 
@@ -174,10 +180,7 @@ class RunStorage:
         """获取工作流运行记录"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM workflow_runs WHERE run_id = ?",
-                (run_id,)
-            )
+            cursor.execute("SELECT * FROM workflow_runs WHERE run_id = ?", (run_id,))
             row = cursor.fetchone()
 
             if not row:
@@ -214,28 +217,68 @@ class RunStorage:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             cursor = conn.cursor()
 
-            # 构建更新语句
-            updates = ["status = ?", "updated_at = ?"]
-            values = [status, now]
-
+            # 使用固定列名，避免动态 SQL 拼接
             if status in ["running", "completed", "failed", "cancelled"]:
-                updates.append("completed_at = ?")
-                values.append(now)
-
-            if result is not None:
-                updates.append("result = ?")
-                values.append(json.dumps(result, ensure_ascii=False))
-
-            if error is not None:
-                updates.append("error = ?")
-                values.append(error)
-
-            values.append(run_id)
-
-            cursor.execute(
-                f"UPDATE workflow_runs SET {', '.join(updates)} WHERE run_id = ?",
-                values
-            )
+                if result is not None and error is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                        (
+                            status,
+                            now,
+                            json.dumps(result, ensure_ascii=False),
+                            error,
+                            now,
+                            run_id,
+                        ),
+                    )
+                elif result is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, updated_at = ? WHERE run_id = ?",
+                        (
+                            status,
+                            now,
+                            json.dumps(result, ensure_ascii=False),
+                            now,
+                            run_id,
+                        ),
+                    )
+                elif error is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, completed_at = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                        (status, now, error, now, run_id),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, completed_at = ?, updated_at = ? WHERE run_id = ?",
+                        (status, now, now, run_id),
+                    )
+            else:
+                if result is not None and error is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, result = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                        (
+                            status,
+                            json.dumps(result, ensure_ascii=False),
+                            error,
+                            now,
+                            run_id,
+                        ),
+                    )
+                elif result is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, result = ?, updated_at = ? WHERE run_id = ?",
+                        (status, json.dumps(result, ensure_ascii=False), now, run_id),
+                    )
+                elif error is not None:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                        (status, error, now, run_id),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE workflow_runs SET status = ?, updated_at = ? WHERE run_id = ?",
+                        (status, now, run_id),
+                    )
 
             conn.commit()
 
@@ -252,12 +295,12 @@ class RunStorage:
         workflow_type: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """列出工作流运行"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
 
-            # 构建 WHERE 子句
+            # 使用固定的 WHERE 子句构建，列名硬编码安全
             conditions = []
             values = []
 
@@ -273,8 +316,7 @@ class RunStorage:
 
             # 查询总数
             cursor.execute(
-                f"SELECT COUNT(*) FROM workflow_runs WHERE {where_clause}",
-                values
+                f"SELECT COUNT(*) FROM workflow_runs WHERE {where_clause}", values
             )
             total = cursor.fetchone()[0]
 
@@ -286,7 +328,7 @@ class RunStorage:
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?
                 """,
-                (*values, limit, offset)
+                (*values, limit, offset),
             )
 
             rows = cursor.fetchall()
@@ -300,10 +342,7 @@ class RunStorage:
         """删除工作流运行记录"""
         with self._get_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "DELETE FROM workflow_runs WHERE run_id = ?",
-                (run_id,)
-            )
+            cursor.execute("DELETE FROM workflow_runs WHERE run_id = ?", (run_id,))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -321,11 +360,14 @@ class RunStorage:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE workflow_runs
                 SET tags = ?, updated_at = ?
                 WHERE run_id = ?
-            """, (json.dumps(tags, ensure_ascii=False), now, run_id))
+            """,
+                (json.dumps(tags, ensure_ascii=False), now, run_id),
+            )
 
             conn.commit()
             return cursor.rowcount > 0
@@ -351,21 +393,27 @@ class RunStorage:
             if match_all:
                 # 所有标签都匹配
                 placeholders = ",".join(["?"] * len(tags))
-                cursor.execute(f"""
+                cursor.execute(
+                    f"""
                     SELECT * FROM workflow_runs
                     WHERE {" AND ".join([f"tags LIKE ?" for _ in tags])}
                     ORDER BY created_at DESC
                     LIMIT ? OFFSET ?
-                """, (*[f'%"{tag}"%' for tag in tags], limit, offset))
+                """,
+                    (*[f'%"{tag}"%' for tag in tags], limit, offset),
+                )
             else:
                 # 任一标签匹配
                 placeholders = ",".join(["?"] * len(tags))
-                cursor.execute(f"""
+                cursor.execute(
+                    f"""
                     SELECT * FROM workflow_runs
                     WHERE {" OR ".join([f"tags LIKE ?" for _ in tags])}
                     ORDER BY created_at DESC
                     LIMIT ? OFFSET ?
-                """, (*[f'%"{tag}"%' for tag in tags], limit, offset))
+                """,
+                    (*[f'%"{tag}"%' for tag in tags], limit, offset),
+                )
 
             rows = cursor.fetchall()
             return [self._row_to_run(row) for row in rows]
@@ -381,15 +429,18 @@ class RunStorage:
             now = datetime.now(timezone.utc).isoformat() + "Z"
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
             INSERT INTO run_events (run_id, event_type, event_data, created_at)
             VALUES (?, ?, ?, ?)
-            """, (
-                run_id,
-                event_type,
-                json.dumps(event_data, ensure_ascii=False) if event_data else None,
-                now,
-            ))
+            """,
+                (
+                    run_id,
+                    event_type,
+                    json.dumps(event_data, ensure_ascii=False) if event_data else None,
+                    now,
+                ),
+            )
 
             conn.commit()
 
@@ -403,18 +454,22 @@ class RunStorage:
                 WHERE run_id = ?
                 ORDER BY created_at ASC
                 """,
-                (run_id,)
+                (run_id,),
             )
 
             events = []
             for row in cursor.fetchall():
-                events.append({
-                    "id": row["id"],
-                    "run_id": row["run_id"],
-                    "event_type": row["event_type"],
-                    "event_data": json.loads(row["event_data"]) if row["event_data"] else None,
-                    "created_at": row["created_at"],
-                })
+                events.append(
+                    {
+                        "id": row["id"],
+                        "run_id": row["run_id"],
+                        "event_type": row["event_type"],
+                        "event_data": json.loads(row["event_data"])
+                        if row["event_data"]
+                        else None,
+                        "created_at": row["created_at"],
+                    }
+                )
 
             return events
 

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +19,13 @@ router = APIRouter(prefix="/api/v1/uploads", tags=["uploads"])
 UPLOAD_DIR = Path("data/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# 最大文件大小: 50MB
+MAX_FILE_SIZE = 50 * 1024 * 1024
+
 
 class UploadResponse(BaseModel):
     """上传响应"""
+
     file_id: str
     filename: str
     path: str
@@ -31,6 +34,7 @@ class UploadResponse(BaseModel):
 
 class UploadListResponse(BaseModel):
     """文件列表响应"""
+
     files: List[UploadResponse]
 
 
@@ -45,13 +49,13 @@ async def upload_file(file: UploadFile = File(...)):
         上传的文件信息，包含服务器端路径
     """
     # 验证文件类型
-    allowed_extensions = {'.pdf', '.txt', '.md', '.tex', '.docx'}
+    allowed_extensions = {".pdf", ".txt", ".md", ".tex", ".docx"}
     file_ext = Path(file.filename).suffix.lower()
 
     if file_ext not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail=f"File type not allowed. Supported: {', '.join(allowed_extensions)}"
+            detail=f"File type not allowed. Supported: {', '.join(allowed_extensions)}",
         )
 
     # 生成唯一文件名避免冲突
@@ -62,6 +66,11 @@ async def upload_file(file: UploadFile = File(...)):
     # 保存文件
     try:
         content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024 * 1024)}MB",
+            )
         with open(file_path, "wb") as f:
             f.write(content)
 
@@ -95,7 +104,7 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
         try:
             # 验证文件类型
             file_ext = Path(file.filename).suffix.lower()
-            allowed_extensions = {'.pdf', '.txt', '.md', '.tex', '.docx'}
+            allowed_extensions = {".pdf", ".txt", ".md", ".tex", ".docx"}
 
             if file_ext not in allowed_extensions:
                 logger.warning(f"Skipping unsupported file: {file.filename}")
@@ -108,15 +117,20 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
 
             # 保存文件
             content = await file.read()
+            if len(content) > MAX_FILE_SIZE:
+                logger.warning(f"Skipping oversized file: {file.filename}")
+                continue
             with open(file_path, "wb") as f:
                 f.write(content)
 
-            results.append(UploadResponse(
-                file_id=file_id,
-                filename=file.filename,
-                path=str(file_path),
-                size=len(content),
-            ))
+            results.append(
+                UploadResponse(
+                    file_id=file_id,
+                    filename=file.filename,
+                    path=str(file_path),
+                    size=len(content),
+                )
+            )
 
             logger.info(f"Uploaded file: {file.filename} -> {file_path}")
 
@@ -140,12 +154,14 @@ async def list_uploaded_files():
                 parts = file_path.name.split("_", 1)
                 original_name = parts[1] if len(parts) > 1 else file_path.name
 
-                files.append(UploadResponse(
-                    file_id=parts[0] if len(parts) > 1 else "unknown",
-                    filename=original_name,
-                    path=str(file_path),
-                    size=stat.st_size,
-                ))
+                files.append(
+                    UploadResponse(
+                        file_id=parts[0] if len(parts) > 1 else "unknown",
+                        filename=original_name,
+                        path=str(file_path),
+                        size=stat.st_size,
+                    )
+                )
     except Exception as e:
         logger.error(f"Failed to list uploaded files: {e}")
 
