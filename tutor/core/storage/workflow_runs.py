@@ -105,6 +105,10 @@ class RunStorage:
                 cursor.execute(
                     "ALTER TABLE workflow_runs ADD COLUMN tags TEXT DEFAULT '[]'"
                 )
+            if "usage" not in columns:
+                cursor.execute(
+                    "ALTER TABLE workflow_runs ADD COLUMN usage TEXT"
+                )
         except Exception as e:
             logger.warning(f"Migration check failed: {e}")
 
@@ -192,6 +196,7 @@ class RunStorage:
             "completed_at": row["completed_at"],
             "result": json.loads(row["result"]) if row["result"] else None,
             "error": row["error"],
+            "usage": json.loads(row["usage"]) if row["usage"] else None,
             "tags": json.loads(row["tags"]) if row["tags"] else [],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -203,6 +208,7 @@ class RunStorage:
         status: str,
         result: Optional[Any] = None,
         error: Optional[str] = None,
+        usage: Optional[Dict[str, Any]] = None,
     ) -> bool:
         """更新工作流运行状态"""
         conn = self._get_conn()
@@ -210,25 +216,27 @@ class RunStorage:
         cursor = conn.cursor()
 
         if status in ["running", "completed", "failed", "cancelled"]:
-            if result is not None and error is not None:
+            if result is not None and error is not None and usage is not None:
                 cursor.execute(
-                    "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                    "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, error = ?, usage = ?, updated_at = ? WHERE run_id = ?",
                     (
                         status,
                         now,
                         json.dumps(result, ensure_ascii=False),
                         error,
+                        json.dumps(usage, ensure_ascii=False),
                         now,
                         run_id,
                     ),
                 )
-            elif result is not None:
+            elif result is not None and usage is not None:
                 cursor.execute(
-                    "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, updated_at = ? WHERE run_id = ?",
+                    "UPDATE workflow_runs SET status = ?, completed_at = ?, result = ?, usage = ?, updated_at = ? WHERE run_id = ?",
                     (
                         status,
                         now,
                         json.dumps(result, ensure_ascii=False),
+                        json.dumps(usage, ensure_ascii=False),
                         now,
                         run_id,
                     ),
@@ -238,32 +246,43 @@ class RunStorage:
                     "UPDATE workflow_runs SET status = ?, completed_at = ?, error = ?, updated_at = ? WHERE run_id = ?",
                     (status, now, error, now, run_id),
                 )
+            elif usage is not None:
+                cursor.execute(
+                    "UPDATE workflow_runs SET status = ?, completed_at = ?, usage = ?, updated_at = ? WHERE run_id = ?",
+                    (status, now, json.dumps(usage, ensure_ascii=False), now, run_id),
+                )
             else:
                 cursor.execute(
                     "UPDATE workflow_runs SET status = ?, completed_at = ?, updated_at = ? WHERE run_id = ?",
                     (status, now, now, run_id),
                 )
         else:
-            if result is not None and error is not None:
+            if result is not None and error is not None and usage is not None:
                 cursor.execute(
-                    "UPDATE workflow_runs SET status = ?, result = ?, error = ?, updated_at = ? WHERE run_id = ?",
+                    "UPDATE workflow_runs SET status = ?, result = ?, error = ?, usage = ?, updated_at = ? WHERE run_id = ?",
                     (
                         status,
                         json.dumps(result, ensure_ascii=False),
                         error,
+                        json.dumps(usage, ensure_ascii=False),
                         now,
                         run_id,
                     ),
                 )
-            elif result is not None:
+            elif result is not None and usage is not None:
                 cursor.execute(
-                    "UPDATE workflow_runs SET status = ?, result = ?, updated_at = ? WHERE run_id = ?",
-                    (status, json.dumps(result, ensure_ascii=False), now, run_id),
+                    "UPDATE workflow_runs SET status = ?, result = ?, usage = ?, updated_at = ? WHERE run_id = ?",
+                    (status, json.dumps(result, ensure_ascii=False), json.dumps(usage, ensure_ascii=False), now, run_id),
                 )
             elif error is not None:
                 cursor.execute(
                     "UPDATE workflow_runs SET status = ?, error = ?, updated_at = ? WHERE run_id = ?",
                     (status, error, now, run_id),
+                )
+            elif usage is not None:
+                cursor.execute(
+                    "UPDATE workflow_runs SET status = ?, usage = ?, updated_at = ? WHERE run_id = ?",
+                    (status, json.dumps(usage, ensure_ascii=False), now, run_id),
                 )
             else:
                 cursor.execute(

@@ -211,48 +211,104 @@ class ProjectManager:
         self.storage_path = storage_path
         self.projects_dir = storage_path / "projects"
         self.projects_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 初始化SQLite存储后端
+        from tutor.core.storage import SQLiteBackend
+        self.db_backend = SQLiteBackend(storage_path / "tutor.db")
+        self.db_backend.initialize()
+        
+        # 迁移现有JSON数据到SQLite
+        self._migrate_from_json()
+        
         logger.info(f"ProjectManager initialized at {self.storage_path}")
 
-    def _get_project_path(self, project_id: str) -> Path:
-        """获取项目文件路径"""
-        return self.projects_dir / f"{project_id}.json"
+    def _migrate_from_json(self):
+        """从JSON文件迁移到SQLite"""
+        try:
+            # 检查是否已经迁移过
+            existing_projects = self.db_backend.list("project")
+            if existing_projects:
+                logger.info("Projects already migrated to SQLite, skipping migration")
+                return
+            
+            # 迁移现有JSON项目
+            for project_file in self.projects_dir.glob("*.json"):
+                try:
+                    with open(project_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    project = Project.from_dict(data)
+                    self._save_project_to_db(project)
+                    logger.info(f"Migrated project: {project.id} from JSON to SQLite")
+                except Exception as e:
+                    logger.error(f"Failed to migrate project {project_file}: {e}")
+        except Exception as e:
+            logger.error(f"Migration failed: {e}")
+
+    def _save_project_to_db(self, project: Project):
+        """保存项目到SQLite数据库"""
+        project_data = project.to_dict()
+        # 提取标签
+        tags = project_data.pop('tags', [])
+        
+        # 保存到SQLite
+        from tutor.core.storage import StorageMetadata
+        metadata = StorageMetadata(tags=tags, extra={})
+        self.db_backend.save(project_data, "project", project.id, metadata)
+
+    def _load_project_from_db(self, project_id: str) -> Optional[Project]:
+        """从SQLite数据库加载项目"""
+        data = self.db_backend.load("project", project_id)
+        if data:
+            return Project.from_dict(data)
+        return None
 
     def create_project(self, name: str, description: str = "") -> Project:
         """创建新项目"""
         project = Project(name=name, description=description)
-        self._save_project(project)
+        self._save_project_to_db(project)
         logger.info(f"Created project: {project.id} - {name}")
         return project
 
-    def _save_project(self, project: Project):
-        """保存项目到文件"""
-        project_path = self._get_project_path(project.id)
-        with open(project_path, "w", encoding="utf-8") as f:
-            json.dump(project.to_dict(), f, indent=2, ensure_ascii=False)
-        logger.debug(f"Saved project: {project.id}")
-
     def get_project(self, project_id: str) -> Optional[Project]:
         """获取项目"""
-        project_path = self._get_project_path(project_id)
-        if not project_path.exists():
-            logger.warning(f"Project not found: {project_id}")
-            return None
-
-        with open(project_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return Project.from_dict(data)
+        # 优先从SQLite加载
+        project = self._load_project_from_db(project_id)
+        if project:
+            return project
+        
+        # 向后兼容：从JSON文件加载
+        project_path = self.projects_dir / f"{project_id}.json"
+        if project_path.exists():
+            try:
+                with open(project_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                project = Project.from_dict(data)
+                # 迁移到SQLite
+                self._save_project_to_db(project)
+                return project
+            except Exception as e:
+                logger.error(f"Failed to load project {project_path}: {e}")
+        
+        logger.warning(f"Project not found: {project_id}")
+        return None
 
     def list_projects(self) -> List[Project]:
         """列出所有项目"""
         projects = []
-        for project_file in self.projects_dir.glob("*.json"):
+        
+        # 从SQLite加载
+        project_records = self.db_backend.list("project")
+        for record in project_records:
             try:
-                with open(project_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                projects.append(Project.from_dict(data))
+                project_data = self.db_backend.load("project", record["id"])
+                if project_data:
+                    project = Project.from_dict(project_data)
+                    # 恢复标签
+                    project.tags = record.get("tags", [])
+                    projects.append(project)
             except Exception as e:
-                logger.error(f"Failed to load project {project_file}: {e}")
-
+                logger.error(f"Failed to load project {record['id']}: {e}")
+        
         # 按更新时间倒序排列
         projects.sort(key=lambda p: p.updated_at, reverse=True)
         return projects
@@ -260,18 +316,17 @@ class ProjectManager:
     def update_project(self, project: Project) -> Project:
         """更新项目"""
         project.update_timestamp()
-        self._save_project(project)
+        self._save_project_to_db(project)
         logger.info(f"Updated project: {project.id}")
         return project
 
     def delete_project(self, project_id: str) -> bool:
         """删除项目"""
-        project_path = self._get_project_path(project_id)
-        if project_path.exists():
-            project_path.unlink()
+        # 从SQLite删除
+        deleted = self.db_backend.delete("project", project_id)
+        if deleted:
             logger.info(f"Deleted project: {project_id}")
-            return True
-        return False
+        return deleted
 
     def update_project_tags(
         self, project_id: str, tags: List[str]
@@ -282,7 +337,7 @@ class ProjectManager:
             return None
         project.tags = tags
         project.update_timestamp()
-        self._save_project(project)
+        self._save_project_to_db(project)
         logger.info(f"Updated tags for project {project_id}: {tags}")
         return project
 
@@ -290,21 +345,25 @@ class ProjectManager:
         self, tags: List[str], match_all: bool = False
     ) -> List[Project]:
         """按标签筛选项目"""
-        all_projects = self.list_projects()
         if not tags:
-            return all_projects
-
-        filtered = []
-        for project in all_projects:
-            project_tags = set(project.tags)
-            tag_set = set(tags)
-            if match_all:
-                if tag_set.issubset(project_tags):
-                    filtered.append(project)
-            else:
-                if tag_set.intersection(project_tags):
-                    filtered.append(project)
-        return filtered
+            return self.list_projects()
+        
+        # 使用SQLite的标签查询
+        project_records = self.db_backend.list("project", filter_tags=tags)
+        projects = []
+        for record in project_records:
+            try:
+                project_data = self.db_backend.load("project", record["id"])
+                if project_data:
+                    project = Project.from_dict(project_data)
+                    project.tags = record.get("tags", [])
+                    projects.append(project)
+            except Exception as e:
+                logger.error(f"Failed to load project {record['id']}: {e}")
+        
+        # 按更新时间倒序排列
+        projects.sort(key=lambda p: p.updated_at, reverse=True)
+        return projects
 
 
 def get_role_by_id(role_id: str) -> Optional[ResearchRole]:

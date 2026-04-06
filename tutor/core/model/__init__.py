@@ -575,6 +575,138 @@ class ModelGateway:
         ]
         return any(k in msg for k in retryable_keywords)
 
+    # 模型费用配置（美元/1000 tokens）
+    MODEL_COSTS = {
+        # OpenAI 模型
+        "gpt-4o": {"input": 0.005, "output": 0.015},
+        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+        # Anthropic 模型
+        "claude-opus-4-20250414": {"input": 0.015, "output": 0.075},
+        "claude-sonnet-4-20250514": {"input": 0.003, "output": 0.015},
+        # 其他模型默认值
+        "default": {"input": 0.001, "output": 0.002},
+    }
+
+    def __init__(
+        self,
+        config: Union[str, Dict[str, Any], ModelConfig, None] = None,
+    ):
+        self.config = self._load_config(config)
+        self.api_base = self.config.api_base
+        self.api_key = self.config.api_key
+        # 使用配置中的 models，如果没有则根据 provider tier 选择默认模型
+        # 注意：不要直接使用 PROVIDER_MODELS（包含显式角色映射），而是使用层级分配
+        if self.config.models:
+            # 用户显式提供了角色映射，使用用户的配置
+            self.models = self.config.models
+        else:
+            # 使用层级分配，基于 tier_models 构建角色映射
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
+            if provider in self.PROVIDER_TIER_MODELS:
+                tier_models = self.PROVIDER_TIER_MODELS[provider]
+                # 构建完整角色->模型映射
+                self.models = {}
+                for tier, roles in self.ROLE_TIERS.items():
+                    model = tier_models.get(
+                        tier, tier_models.get("high", "gpt-4o-mini")
+                    )
+                    for role in roles:
+                        self.models[role] = model
+                # 添加 default 角色
+                self.models["default"] = tier_models.get("high", "gpt-4o-mini")
+            else:
+                self.models = self.DEFAULT_MODELS.copy()
+
+        # 使用配置中的 fallbacks，如果没有则使用默认
+        if self.config.fallback_models:
+            self.fallback_models = self.config.fallback_models
+        else:
+            # 根据 provider 选择默认 fallback
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
+            if provider == "deepseek":
+                # DeepSeek 通常不需要 fallback
+                self.fallback_models = {}
+            else:
+                self.fallback_models = self.DEFAULT_FALLBACKS.copy()
+        self.max_retries = self.config.max_retries
+        self.retry_base_delay = self.config.retry_base_delay
+
+        # 如果没有设置 API key，尝试从环境变量获取
+        if not self.api_key:
+            self.api_key = os.environ.get("OPENAI_API_KEY", "")
+
+        # 如果没有设置 api_base，根据 provider 设置默认值
+        if not self.api_base or self.api_base == "https://api.openai.com/v1":
+            env_base = os.environ.get("TUTOR_API_BASE", "")
+            if env_base:
+                self.api_base = env_base
+            else:
+                # 根据 provider 设置默认 API base
+                provider = (
+                    self.config.provider.lower() if self.config.provider else "openai"
+                )
+                if provider == "deepseek":
+                    self.api_base = "https://api.deepseek.com"
+                elif provider == "minimax":
+                    self.api_base = "https://api.minimax.chat/v1"
+                elif provider == "anthropic":
+                    self.api_base = "https://api.anthropic.com"
+                # 否则保持默认的 OpenAI URL
+
+        # 验证配置
+        if not self.api_key:
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
+            if provider == "deepseek":
+                env_key = os.environ.get("DEEPSEEK_API_KEY", "")
+                if env_key:
+                    self.api_key = env_key
+                else:
+                    logger.warning(
+                        "DeepSeek API key not configured. Set DEEPSEEK_API_KEY environment variable "
+                        "or provide api_key in config. Model calls will fail."
+                    )
+            elif provider == "minimax":
+                env_key = os.environ.get("MINIMAX_API_KEY", "")
+                if env_key:
+                    self.api_key = env_key
+                else:
+                    logger.warning(
+                        "Minimax API key not configured. Set MINIMAX_API_KEY environment variable "
+                        "or provide api_key in config. Model calls will fail."
+                    )
+            else:
+                logger.warning(
+                    "API key not configured. Set OPENAI_API_KEY environment variable "
+                    "or provide api_key in config. Model calls will fail."
+                )
+
+        # 费用追踪
+        self.total_tokens = 0
+        self.total_cost = 0.0
+        self.token_usage_history = []
+
+        logger.info(f"ModelGateway initialized with provider: {self.config.provider}")
+
+    def get_model_cost(self, model_id: str) -> Dict[str, float]:
+        """获取模型的费用配置"""
+        for model_pattern, cost in self.MODEL_COSTS.items():
+            if model_pattern in model_id:
+                return cost
+        return self.MODEL_COSTS["default"]
+
+    def calculate_cost(self, model_id: str, input_tokens: int, output_tokens: int) -> float:
+        """计算费用"""
+        cost_config = self.get_model_cost(model_id)
+        input_cost = (input_tokens / 1000) * cost_config["input"]
+        output_cost = (output_tokens / 1000) * cost_config["output"]
+        return input_cost + output_cost
+
     def _call_api(
         self,
         model_id: str,
@@ -619,7 +751,29 @@ class ModelGateway:
             result = response.json()
             content: str = result["choices"][0]["message"]["content"]
 
+            # 解析 token 使用情况
+            usage = result.get("usage", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            completion_tokens = usage.get("completion_tokens", 0)
+            total_tokens = usage.get("total_tokens", 0)
+
+            # 计算费用
+            cost = self.calculate_cost(model_id, prompt_tokens, completion_tokens)
+
+            # 更新费用追踪
+            self.total_tokens += total_tokens
+            self.total_cost += cost
+            self.token_usage_history.append({
+                "model_id": model_id,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "cost": cost,
+                "timestamp": time.time(),
+            })
+
             logger.info(f"Model {model_id} responded with {len(content)} chars")
+            logger.info(f"Token usage: prompt={prompt_tokens}, completion={completion_tokens}, total={total_tokens}, cost=${cost:.4f}")
             logger.debug(f"Response: {content[:200]}...")
 
             return content
@@ -633,6 +787,21 @@ class ModelGateway:
         except (KeyError, IndexError) as e:
             logger.error(f"Invalid response format for {model_id}: {e}")
             raise ModelError(f"Invalid response format: {e}")
+
+    def get_usage_summary(self) -> Dict[str, Any]:
+        """获取使用情况摘要"""
+        return {
+            "total_tokens": self.total_tokens,
+            "total_cost": self.total_cost,
+            "usage_history": self.token_usage_history,
+        }
+
+    def reset_usage(self) -> None:
+        """重置使用情况追踪"""
+        self.total_tokens = 0
+        self.total_cost = 0.0
+        self.token_usage_history = []
+        logger.info("Usage tracking reset")
 
     def validate_connection(self) -> bool:
         """验证模型连接是否可用
@@ -711,7 +880,7 @@ class ModelGateway:
         # 构建完整的角色->模型映射
         role_to_model = {}
         for tier, roles in self.ROLE_TIERS.items():
-                    model = tier_models.get(tier, tier_models.get("high", "gpt-4o-mini"))
+            model = tier_models.get(tier, tier_models.get("high", "gpt-4o-mini"))
             for role in roles:
                 role_to_model[role] = model
 
