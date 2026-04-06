@@ -32,6 +32,13 @@ def _build_paper_prompt(title: str, abstract: str, introduction: str,
                          methodology: str, experiments: str, conclusion: str,
                          experiment_report: Dict = None) -> str:
     """构建论文评审提示"""
+    related_experiment_section = ""
+    if experiment_report:
+        final_report = experiment_report.get("final_report", "")
+        related_experiment_section = (
+            f"**Related Experiment Report:**\n{final_report[:1000]}..."
+        )
+
     return f"""Please perform a comprehensive academic review of the following research paper.
 
 **Paper Title:** {title}
@@ -51,7 +58,7 @@ def _build_paper_prompt(title: str, abstract: str, introduction: str,
 **4. Conclusion**
 {conclusion}
 
-{f"**Related Experiment Report:**\n{experiment_report.get('final_report', '')[:1000]}..." if experiment_report else ""}
+{related_experiment_section}
 
 Please evaluate the paper on the following dimensions and provide specific feedback:
 

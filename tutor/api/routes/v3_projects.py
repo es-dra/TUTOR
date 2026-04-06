@@ -20,7 +20,7 @@ from tutor.core.project.v3_project import (
     MessageType,
     DEFAULT_ROLES,
 )
-from tutor.core.workflow.engine import WorkflowEngine
+from tutor.core.workflow.base import WorkflowEngine
 from tutor.core.model import ModelGateway
 from tutor.core.workflow.idea import IdeaFlow
 from tutor.core.workflow.experiment import ExperimentFlow
@@ -491,4 +491,3 @@ async def resume_workflow(project_id: str, run_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to resume workflow {run_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to resume workflow: {str(e)}")
-

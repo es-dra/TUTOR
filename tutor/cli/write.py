@@ -200,7 +200,10 @@ def start(
                     latex_flow.context.update_state(result.output)
                     latex_result = latex_flow.run()
                     if latex_result.status == "completed":
-                        console.print(f"📄 PDF 已生成: {output / "latex" / "results" / "paper.pdf"}", style="bold green")
+                        console.print(
+                            f"📄 PDF 已生成: {output / 'latex' / 'results' / 'paper.pdf'}",
+                            style="bold green",
+                        )
                 progress.update(task, completed=True, description="[green]完成")
 
                 # 9. 显示撰写结果

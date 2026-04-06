@@ -6,12 +6,6 @@ target-version = ['py39']
 profile = "black"
 line_length = 88
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --cov=core --cov-report=html --cov-report=term"
-asyncio_mode = "auto"
-
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"

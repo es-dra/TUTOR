@@ -8,9 +8,21 @@ const API_BASE = '';
  * @returns {Promise<any>} 解析后的数据
  */
 async function parseResponse(res, operationName = '操作') {
-  const data = await res.json();
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    if (!res.ok) {
+      throw new Error(`${operationName}失败 (HTTP ${res.status})`);
+    }
+    return {};
+  }
   if (!res.ok) {
-    const errorMsg = data?.error?.message || `${operationName}失败`;
+    const errorMsg =
+      data?.error?.message ||
+      data?.detail ||
+      data?.message ||
+      `${operationName}失败`;
     throw new Error(errorMsg);
   }
   // 兼容新旧格式：检查是否是新的 envelope 格式
