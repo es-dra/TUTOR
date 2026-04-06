@@ -39,7 +39,7 @@ class UploadListResponse(BaseModel):
     files: List[UploadResponse]
 
 
-@router.post("", response_model=UploadResponse)
+@router.post("")
 async def upload_file(file: UploadFile = File(...)):
     """上传单个文件
 
@@ -49,6 +49,8 @@ async def upload_file(file: UploadFile = File(...)):
     Returns:
         上传的文件信息，包含服务器端路径
     """
+    from tutor.api.models import success_response
+    
     # 验证文件类型
     allowed_extensions = {".pdf", ".txt", ".md", ".tex", ".docx"}
     file_ext = Path(file.filename).suffix.lower()
@@ -77,19 +79,19 @@ async def upload_file(file: UploadFile = File(...)):
 
         logger.info(f"Uploaded file: {file.filename} -> {file_path}")
 
-        return UploadResponse(
+        return success_response(data=UploadResponse(
             file_id=file_id,
             filename=file.filename,
             path=str(file_path),
             size=len(content),
-        )
+        ))
 
     except Exception as e:
         logger.error(f"Failed to save uploaded file: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
 
 
-@router.post("/multiple", response_model=List[UploadResponse])
+@router.post("/multiple")
 async def upload_multiple_files(files: List[UploadFile] = File(...)):
     """上传多个文件
 
@@ -99,6 +101,8 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
     Returns:
         上传的文件信息列表
     """
+    from tutor.api.models import success_response
+    
     results = []
 
     for file in files:
@@ -139,12 +143,14 @@ async def upload_multiple_files(files: List[UploadFile] = File(...)):
             logger.error(f"Failed to save uploaded file {file.filename}: {e}")
             continue
 
-    return results
+    return success_response(data=results)
 
 
-@router.get("", response_model=UploadListResponse)
+@router.get("")
 async def list_uploaded_files():
     """列出已上传的文件"""
+    from tutor.api.models import success_response
+    
     files = []
 
     try:
@@ -166,7 +172,7 @@ async def list_uploaded_files():
     except Exception as e:
         logger.error(f"Failed to list uploaded files: {e}")
 
-    return UploadListResponse(files=files)
+    return success_response(data=UploadListResponse(files=files))
 
 
 @router.delete("/{file_id}")
@@ -176,12 +182,14 @@ async def delete_uploaded_file(file_id: str):
     Args:
         file_id: 文件 ID
     """
+    from tutor.api.models import success_response
+    
     try:
         for file_path in UPLOAD_DIR.iterdir():
             if file_path.is_file() and file_path.name.startswith(file_id):
                 file_path.unlink()
                 logger.info(f"Deleted file: {file_path}")
-                return {"status": "deleted", "file_id": file_id}
+                return success_response(data={"status": "deleted", "file_id": file_id})
 
         raise HTTPException(status_code=404, detail=f"File not found: {file_id}")
 

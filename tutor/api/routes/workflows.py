@@ -38,7 +38,7 @@ def get_run_storage() -> RunStorage:
     return RunStorage()
 
 
-@router.post("/run", response_model=RunResponse)
+@router.post("/run")
 async def start_run(request: RunRequest):
     """启动工作流执行
 
@@ -48,6 +48,8 @@ async def start_run(request: RunRequest):
     - review: 论文评审
     - write: 论文撰写
     """
+    from tutor.api.models import success_response
+    
     valid_types = WorkflowType.all()
     if request.workflow_type not in valid_types:
         raise HTTPException(
@@ -69,22 +71,12 @@ async def start_run(request: RunRequest):
         _execute_workflow(run_id, request, run_storage, broadcaster)
     )
 
-    return RunResponse(
+    return success_response(data=RunResponse(
         run_id=run_id,
         status="pending",
         workflow_type=request.workflow_type,
         message=f"Workflow '{request.workflow_type}' started. Run ID: {run_id}",
-    )
-
-
-@router.get("/{run_id}")
-async def get_run_status(run_id: str):
-    """查询运行状态"""
-    run_storage = get_run_storage()
-    run = run_storage.get_run(run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-    return success_response(data=RunStatusResponse(**run).model_dump())
+    ))
 
 
 @router.get("")
@@ -139,62 +131,6 @@ async def list_favorite_runs(limit: int = 100, offset: int = 0):
     )
     return paginated_response(
         items=runs, total=len(runs), limit=limit, offset=offset
-    )
-
-
-@router.delete("/{run_id}")
-async def delete_run(run_id: str):
-    """删除工作流运行记录"""
-    run_storage = get_run_storage()
-    success = run_storage.delete_run(run_id)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-    return success_response(data={"run_id": run_id, "status": "deleted"})
-
-
-@router.post("/{run_id}/retry")
-async def retry_run(run_id: str):
-    """重试失败的工作流，使用相同的参数创建新的运行"""
-    run_storage = get_run_storage()
-    original_run = run_storage.get_run(run_id)
-    if not original_run:
-        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-
-    if original_run.get("status") not in ("failed", "completed", "paused"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only failed/completed/paused runs can be retried. Current status: {original_run.get('status')}",
-        )
-
-    # 创建新的运行，使用原始参数
-    new_run_id = str(uuid.uuid4())
-    run_storage.create_run(
-        run_id=new_run_id,
-        workflow_type=original_run.get("workflow_type"),
-        params=original_run.get("params", {}),
-        config=original_run.get("config", {}),
-    )
-
-    # 启动工作流
-    asyncio.create_task(
-        _execute_workflow(
-            new_run_id,
-            RunRequest(
-                workflow_type=original_run.get("workflow_type"),
-                params=original_run.get("params", {}),
-                config=original_run.get("config", {}),
-            ),
-            run_storage,
-            broadcaster,
-        )
-    )
-
-    return success_response(
-        data={
-            "original_run_id": run_id,
-            "new_run_id": new_run_id,
-            "message": f"Workflow retry started. New Run ID: {new_run_id}",
-        }
     )
 
 
@@ -277,6 +213,161 @@ async def cleanup_old_runs(
     )
 
 
+# ==================== Approval Routes ====================
+
+@router.get("/approvals")
+async def list_approvals(
+    run_id: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """List approval requests"""
+    results = am.list_all(run_id=run_id, status=status)
+    return success_response(data={
+        "total": len(results),
+        "approvals": [r.to_dict() for r in results],
+    })
+
+
+@router.get("/approvals/pending")
+async def list_pending_approvals(run_id: Optional[str] = None):
+    """List pending approvals"""
+    results = am.list_pending(run_id=run_id)
+    return success_response(data={
+        "total": len(results),
+        "approvals": [r.to_dict() for r in results],
+    })
+
+
+@router.get("/approvals/{approval_id}")
+async def get_approval(approval_id: str):
+    """Get approval details"""
+    request = am.get_request(approval_id)
+    if not request:
+        raise HTTPException(
+            status_code=404, detail=f"Approval '{approval_id}' not found"
+        )
+    return success_response(data=request.to_dict())
+
+
+@router.post("/approvals/{approval_id}/approve")
+async def approve_request(approval_id: str, comment: Optional[str] = ""):
+    """Approve an approval request and resume the associated workflow"""
+    success = am.approve(approval_id, comment=comment or "")
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve '{approval_id}'. Not found or already resolved.",
+        )
+
+    # Trigger workflow resume
+    request = am.get_request(approval_id)
+    if request and request.run_id:
+        # Try to find and resume the paused workflow
+        run_storage = get_run_storage()
+        run = run_storage.get_run(request.run_id)
+        if run and run.get("status") == "paused":
+            # Import here to avoid circular imports
+            engine = WorkflowEngine()
+            # Resume in background
+            asyncio.create_task(
+                _resume_workflow_async(request.run_id, engine, None, None)
+            )
+
+    return success_response(data=request.to_dict())
+
+
+@router.post("/approvals/{approval_id}/reject")
+async def reject_request(approval_id: str, comment: Optional[str] = ""):
+    """Reject an approval request"""
+    success = am.reject(approval_id, comment=comment or "")
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reject '{approval_id}'. Not found or already resolved.",
+        )
+    request = am.get_request(approval_id)
+    return success_response(data=request.to_dict())
+
+
+@router.post("/approvals/{approval_id}/cancel")
+async def cancel_request(approval_id: str):
+    """Cancel an approval request"""
+    success = am.cancel(approval_id)
+    if not success:
+        raise HTTPException(
+            status_code=404, detail=f"Approval '{approval_id}' not found"
+        )
+    return success_response(data={"status": "cancelled", "approval_id": approval_id})
+
+
+# ==================== Run-specific Routes ====================
+
+@router.get("/{run_id}")
+async def get_run_status(run_id: str):
+    """查询运行状态"""
+    run_storage = get_run_storage()
+    run = run_storage.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return success_response(data=RunStatusResponse(**run).model_dump())
+
+
+@router.delete("/{run_id}")
+async def delete_run(run_id: str):
+    """删除工作流运行记录"""
+    run_storage = get_run_storage()
+    success = run_storage.delete_run(run_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    return success_response(data={"run_id": run_id, "status": "deleted"})
+
+
+@router.post("/{run_id}/retry")
+async def retry_run(run_id: str):
+    """重试失败的工作流，使用相同的参数创建新的运行"""
+    run_storage = get_run_storage()
+    original_run = run_storage.get_run(run_id)
+    if not original_run:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+    if original_run.get("status") not in ("failed", "completed", "paused"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only failed/completed/paused runs can be retried. Current status: {original_run.get('status')}",
+        )
+
+    # 创建新的运行，使用原始参数
+    new_run_id = str(uuid.uuid4())
+    run_storage.create_run(
+        run_id=new_run_id,
+        workflow_type=original_run.get("workflow_type"),
+        params=original_run.get("params", {}),
+        config=original_run.get("config", {}),
+    )
+
+    # 启动工作流
+    asyncio.create_task(
+        _execute_workflow(
+            new_run_id,
+            RunRequest(
+                workflow_type=original_run.get("workflow_type"),
+                params=original_run.get("params", {}),
+                config=original_run.get("config", {}),
+            ),
+            run_storage,
+            broadcaster,
+        )
+    )
+
+    return success_response(
+        data={
+            "original_run_id": run_id,
+            "new_run_id": new_run_id,
+            "message": f"Workflow retry started. New Run ID: {new_run_id}",
+        }
+    )
+
+
 @router.patch("/{run_id}/tags")
 async def update_run_tags(run_id: str, tags: Dict[str, Any]):
     """更新工作流标签（用于归档、收藏等）
@@ -335,93 +426,6 @@ async def cancel_run(run_id: str):
             "run_id": run_id,
         }
     )
-
-
-# ==================== Approval Routes ====================
-
-@router.get("/approvals")
-async def list_approvals(
-    run_id: Optional[str] = None,
-    status: Optional[str] = None,
-):
-    """List approval requests"""
-    results = am.list_all(run_id=run_id, status=status)
-    return {
-        "total": len(results),
-        "approvals": [r.to_dict() for r in results],
-    }
-
-
-@router.get("/approvals/pending")
-async def list_pending_approvals(run_id: Optional[str] = None):
-    """List pending approvals"""
-    results = am.list_pending(run_id=run_id)
-    return {
-        "total": len(results),
-        "approvals": [r.to_dict() for r in results],
-    }
-
-
-@router.get("/approvals/{approval_id}")
-async def get_approval(approval_id: str):
-    """Get approval details"""
-    request = am.get_request(approval_id)
-    if not request:
-        raise HTTPException(
-            status_code=404, detail=f"Approval '{approval_id}' not found"
-        )
-    return request.to_dict()
-
-
-@router.post("/approvals/{approval_id}/approve")
-async def approve_request(approval_id: str, comment: Optional[str] = ""):
-    """Approve an approval request and resume the associated workflow"""
-    success = am.approve(approval_id, comment=comment or "")
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot approve '{approval_id}'. Not found or already resolved.",
-        )
-
-    # Trigger workflow resume
-    request = am.get_request(approval_id)
-    if request and request.run_id:
-        # Try to find and resume the paused workflow
-        run_storage = get_run_storage()
-        run = run_storage.get_run(request.run_id)
-        if run and run.get("status") == "paused":
-            # Import here to avoid circular imports
-            engine = WorkflowEngine()
-            # Resume in background
-            asyncio.create_task(
-                _resume_workflow_async(request.run_id, engine, None, None)
-            )
-
-    return request.to_dict()
-
-
-@router.post("/approvals/{approval_id}/reject")
-async def reject_request(approval_id: str, comment: Optional[str] = ""):
-    """Reject an approval request"""
-    success = am.reject(approval_id, comment=comment or "")
-    if not success:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot reject '{approval_id}'. Not found or already resolved.",
-        )
-    request = am.get_request(approval_id)
-    return request.to_dict()
-
-
-@router.post("/approvals/{approval_id}/cancel")
-async def cancel_request(approval_id: str):
-    """Cancel an approval request"""
-    success = am.cancel(approval_id)
-    if not success:
-        raise HTTPException(
-            status_code=404, detail=f"Approval '{approval_id}' not found"
-        )
-    return {"status": "cancelled", "approval_id": approval_id}
 
 
 # ==================== Helper Functions ====================

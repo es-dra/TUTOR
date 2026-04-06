@@ -103,29 +103,33 @@ class WorkflowRunResponse(BaseModel):
 
 # ============ API 端点 ============
 
-@router.post("", response_model=ProjectResponse)
-async def create_project(request: CreateProjectRequest) -> ProjectResponse:
+@router.post("")
+async def create_project(request: CreateProjectRequest):
     """创建新项目"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.create_project(name=request.name, description=request.description)
     
-    return ProjectResponse(
+    return success_response(data=ProjectResponse(
         id=project.id,
         name=project.name,
         description=project.description,
         status=project.status.value,
         created_at=project.created_at,
         updated_at=project.updated_at,
-    )
+    ))
 
 
-@router.get("", response_model=List[ProjectResponse])
+@router.get("")
 async def list_projects(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-) -> List[ProjectResponse]:
+):
     """列出所有项目"""
+    from tutor.api.models import success_response, paginated_response
+    
     mgr = get_project_manager()
     projects = mgr.list_projects()
     
@@ -133,10 +137,11 @@ async def list_projects(
     if status:
         projects = [p for p in projects if p.status.value == status]
     
+    total = len(projects)
     # 分页
     projects = projects[offset:offset+limit]
     
-    return [
+    project_responses = [
         ProjectResponse(
             id=p.id,
             name=p.name,
@@ -151,18 +156,22 @@ async def list_projects(
         )
         for p in projects
     ]
+    
+    return paginated_response(items=project_responses, total=total, limit=limit, offset=offset)
 
 
-@router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(project_id: str) -> ProjectResponse:
+@router.get("/{project_id}")
+async def get_project(project_id: str):
     """获取项目详情"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    return ProjectResponse(
+    return success_response(data=ProjectResponse(
         id=project.id,
         name=project.name,
         description=project.description,
@@ -174,12 +183,14 @@ async def get_project(project_id: str) -> ProjectResponse:
         paper_data=project.paper_data,
         review_data=project.review_data,
         role_conversations=[msg.to_dict() for msg in project.role_conversations],
-    )
+    ))
 
 
-@router.put("/{project_id}", response_model=ProjectResponse)
-async def update_project(project_id: str, request: UpdateProjectRequest) -> ProjectResponse:
+@router.put("/{project_id}")
+async def update_project(project_id: str, request: UpdateProjectRequest):
     """更新项目"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
@@ -195,7 +206,7 @@ async def update_project(project_id: str, request: UpdateProjectRequest) -> Proj
     
     updated_project = mgr.update_project(project)
     
-    return ProjectResponse(
+    return success_response(data=ProjectResponse(
         id=updated_project.id,
         name=updated_project.name,
         description=updated_project.description,
@@ -206,37 +217,43 @@ async def update_project(project_id: str, request: UpdateProjectRequest) -> Proj
         experiment_data=updated_project.experiment_data,
         paper_data=updated_project.paper_data,
         review_data=updated_project.review_data,
-    )
+    ))
 
 
 @router.delete("/{project_id}")
-async def delete_project(project_id: str) -> Dict[str, Any]:
+async def delete_project(project_id: str):
     """删除项目"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     success = mgr.delete_project(project_id)
     
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    return {"status": "deleted", "project_id": project_id}
+    return success_response(data={"status": "deleted", "project_id": project_id})
 
 
-@router.get("/{project_id}/conversations", response_model=List[Dict[str, Any]])
-async def get_project_conversations(project_id: str) -> List[Dict[str, Any]]:
+@router.get("/{project_id}/conversations")
+async def get_project_conversations(project_id: str):
     """获取项目的角色对话历史"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    return [msg.to_dict() for msg in project.role_conversations]
+    return success_response(data=[msg.to_dict() for msg in project.role_conversations])
 
 
-@router.get("/roles/list", response_model=List[RoleResponse])
-async def list_roles() -> List[RoleResponse]:
+@router.get("/roles/list")
+async def list_roles():
     """获取所有可用角色"""
-    return [
+    from tutor.api.models import success_response
+    
+    roles = [
         RoleResponse(
             id=role.id,
             name=role.name,
@@ -248,14 +265,18 @@ async def list_roles() -> List[RoleResponse]:
         )
         for role in DEFAULT_ROLES
     ]
+    
+    return success_response(data=roles)
 
 
 @router.patch("/{project_id}/tags")
-async def update_project_tags(project_id: str, tags: Dict[str, List[str]]) -> Dict[str, Any]:
+async def update_project_tags(project_id: str, tags: Dict[str, List[str]]):
     """更新项目标签（用于归档、收藏、备注等）
     
     Body: {"tags": ["archived", "favorite", "notes:这是备注"]}
     """
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
@@ -270,23 +291,25 @@ async def update_project_tags(project_id: str, tags: Dict[str, List[str]]) -> Di
     if not updated_project:
         raise HTTPException(status_code=500, detail="Failed to update tags")
     
-    return {
+    return success_response(data={
         "status": "updated",
         "project_id": project_id,
         "tags": updated_project.tags
-    }
+    })
 
 
-@router.get("/list/archived", response_model=List[ProjectResponse])
-async def list_archived_projects(limit: int = 50, offset: int = 0) -> List[ProjectResponse]:
+@router.get("/list/archived")
+async def list_archived_projects(limit: int = 50, offset: int = 0):
     """列出已归档的项目"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     projects = mgr.list_projects_by_tags(["archived"])
     
     # 分页
     projects = projects[offset:offset+limit]
     
-    return [
+    project_responses = [
         ProjectResponse(
             id=p.id,
             name=p.name,
@@ -301,18 +324,22 @@ async def list_archived_projects(limit: int = 50, offset: int = 0) -> List[Proje
         )
         for p in projects
     ]
+    
+    return success_response(data=project_responses)
 
 
-@router.get("/list/favorites", response_model=List[ProjectResponse])
-async def list_favorite_projects(limit: int = 50, offset: int = 0) -> List[ProjectResponse]:
+@router.get("/list/favorites")
+async def list_favorite_projects(limit: int = 50, offset: int = 0):
     """列出收藏的项目"""
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     projects = mgr.list_projects_by_tags(["favorite"])
     
     # 分页
     projects = projects[offset:offset+limit]
     
-    return [
+    project_responses = [
         ProjectResponse(
             id=p.id,
             name=p.name,
@@ -327,10 +354,12 @@ async def list_favorite_projects(limit: int = 50, offset: int = 0) -> List[Proje
         )
         for p in projects
     ]
+    
+    return success_response(data=project_responses)
 
 
-@router.post("/{project_id}/run-workflow", response_model=WorkflowRunResponse)
-async def run_project_workflow(project_id: str, request: RunWorkflowRequest) -> WorkflowRunResponse:
+@router.post("/{project_id}/run-workflow")
+async def run_project_workflow(project_id: str, request: RunWorkflowRequest):
     """运行项目工作流
     
     支持的工作流类型：
@@ -339,6 +368,8 @@ async def run_project_workflow(project_id: str, request: RunWorkflowRequest) -> 
     - write: 论文撰写
     - review: 论文评审
     """
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
@@ -415,33 +446,37 @@ async def run_project_workflow(project_id: str, request: RunWorkflowRequest) -> 
     # 启动异步执行
     asyncio.create_task(execute_workflow())
     
-    return WorkflowRunResponse(
+    return success_response(data=WorkflowRunResponse(
         run_id=run_id,
         status="pending",
         workflow_type=request.workflow_type,
         message=f"Workflow '{request.workflow_type}' started for project {project_id}"
-    )
+    ))
 
 
 @router.get("/{project_id}/workflow-status/{run_id}")
-async def get_workflow_status(project_id: str, run_id: str) -> Dict[str, Any]:
+async def get_workflow_status(project_id: str, run_id: str):
     """获取项目工作流状态"""
+    from tutor.api.models import success_response
+    
     # 这里可以实现获取工作流状态的逻辑
     # 暂时返回模拟数据
-    return {
+    return success_response(data={
         "run_id": run_id,
         "status": "running",
         "project_id": project_id,
         "message": "Workflow is running"
-    }
+    })
 
 
 @router.post("/{project_id}/workflow-resume/{run_id}")
-async def resume_workflow(project_id: str, run_id: str) -> Dict[str, Any]:
+async def resume_workflow(project_id: str, run_id: str):
     """恢复暂停的工作流
     
     从PAUSED状态恢复工作流执行，使用之前的检查点数据。
     """
+    from tutor.api.models import success_response
+    
     mgr = get_project_manager()
     project = mgr.get_project(project_id)
     
@@ -481,12 +516,12 @@ async def resume_workflow(project_id: str, run_id: str) -> Dict[str, Any]:
         # 启动异步执行
         asyncio.create_task(resume_workflow_task())
         
-        return {
+        return success_response(data={
             "run_id": run_id,
             "status": "resumed",
             "project_id": project_id,
             "message": "Workflow resumed successfully"
-        }
+        })
         
     except Exception as e:
         logger.error(f"Failed to resume workflow {run_id}: {e}")

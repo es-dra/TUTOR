@@ -143,8 +143,8 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error('文件上传失败');
-    return res.json();
+    const data = await parseResponse(res, '文件上传');
+    return data.data || data;
   },
 
   async uploadFiles(files) {
@@ -157,22 +157,22 @@ export const api = {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error('文件上传失败');
-    return res.json();
+    const data = await parseResponse(res, '文件上传');
+    return data.data || data;
   },
 
   async listUploadedFiles() {
     const res = await fetch(`${API_BASE}/api/v1/uploads`);
-    if (!res.ok) throw new Error('获取文件列表失败');
-    return res.json();
+    const data = await parseResponse(res, '获取文件列表');
+    return data.data || data;
   },
 
   async deleteUploadedFile(fileId) {
     const res = await fetch(`${API_BASE}/api/v1/uploads/${fileId}`, {
       method: 'DELETE'
     });
-    if (!res.ok) throw new Error('删除文件失败');
-    return res.json();
+    const data = await parseResponse(res, '删除文件');
+    return data.data || data;
   },
 
   // 审批相关
@@ -184,8 +184,8 @@ export const api = {
     if (params.toString()) url += `?${params.toString()}`;
 
     const res = await fetch(url);
-    if (!res.ok) throw new Error('获取审批列表失败');
-    return res.json();
+    const data = await parseResponse(res, '获取审批列表');
+    return data.data || data;
   },
 
   async approveRequest(approvalId, comment = '') {
@@ -194,8 +194,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comment })
     });
-    if (!res.ok) throw new Error('审批失败');
-    return res.json();
+    const data = await parseResponse(res, '审批');
+    return data.data || data;
   },
 
   async rejectRequest(approvalId, comment = '') {
@@ -204,8 +204,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comment })
     });
-    if (!res.ok) throw new Error('拒绝失败');
-    return res.json();
+    const data = await parseResponse(res, '拒绝');
+    return data.data || data;
   },
 
   // 指标
