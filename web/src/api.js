@@ -185,7 +185,8 @@ export const api = {
 
     const res = await fetch(url);
     const data = await parseResponse(res, '获取审批列表');
-    return data.data || data;
+    // 返回 envelope 格式的完整响应，让调用方处理数据
+    return data;
   },
 
   async approveRequest(approvalId, comment = '') {

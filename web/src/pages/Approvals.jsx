@@ -11,10 +11,11 @@ function Approvals({ onViewRun }) {
   const loadApprovals = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listApprovals(
+      const response = await api.listApprovals(
         filter.runId || null,
         filter.status || null
       );
+      const data = response.data || response;
       setApprovals(data.approvals || []);
     } catch (error) {
       console.error('加载失败:', error);
