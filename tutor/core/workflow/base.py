@@ -533,7 +533,13 @@ class Workflow(ABC):
         """运行工作流（支持重试与回滚）"""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # 在没有事件循环的线程中创建一个新的事件循环
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
             if loop.is_running():
                 # 如果已经在事件循环中，使用 create_task
                 task = loop.create_task(self.run_async())
@@ -705,11 +711,36 @@ class Workflow(ABC):
         except Exception as e:
             self.logger.error(f"Workflow failed: {e}")
             self._stop_monitoring()
+            
+            # 分析错误并生成恢复建议
+            try:
+                from .error_handling import analyze_error, generate_error_report_dict
+                error_analysis = analyze_error(e, self)
+                error_report = generate_error_report_dict(e, self)
+                
+                # 记录错误分析结果
+                self.context.log_decision(
+                    step_name="error_handling",
+                    decision_type="error_analysis",
+                    anomaly=str(e),
+                    decision=f"错误分类: {error_analysis.error_type.value}",
+                    impact=f"严重程度: {error_analysis.severity.value}",
+                    success=True,
+                )
+                
+                # 构建错误消息，包含恢复建议
+                error_message = f"{str(e)}\n\n恢复建议:\n" + "\n".join([f"- {suggestion}" for suggestion in error_analysis.suggestions])
+                
+            except Exception as analysis_error:
+                self.logger.error(f"Error analysis failed: {analysis_error}")
+                error_message = str(e)
+                error_report = None
+            
             return WorkflowResult(
                 workflow_id=self.workflow_id,
                 status=WorkflowStatus.FAILED,
                 output={},
-                error=str(e),
+                error=error_message,
                 started_at=started_at,
                 completed_at=datetime.now(timezone.utc),
                 duration_seconds=(
@@ -767,7 +798,13 @@ class WorkflowEngine:
         """运行工作流（首次或恢复）"""
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # 在没有事件循环的线程中创建一个新的事件循环
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
             if loop.is_running():
                 task = loop.create_task(self.run_workflow_async(workflow_id))
                 return loop.run_until_complete(task)
@@ -793,7 +830,13 @@ class WorkflowEngine:
         """
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # 在没有事件循环的线程中创建一个新的事件循环
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
             if loop.is_running():
                 task = loop.create_task(self.resume_workflow_async(workflow_id))
                 return loop.run_until_complete(task)

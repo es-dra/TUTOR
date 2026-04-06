@@ -102,6 +102,74 @@ class WorkflowRetryManager:
         else:
             logger.warning(f"Step '{step.name}' failed, will rollback (ROLLBACK strategy)")
             raise last_error  # type: ignore
+    
+    async def execute_with_retry_async(
+        self,
+        step: Any,
+        context: Any,
+        policy: RetryPolicy,
+        failure_strategy: FailureStrategy = FailureStrategy.STOP,
+    ) -> Dict[str, Any]:
+        """异步带重试的步骤执行
+
+        Args:
+            step: WorkflowStep 实例
+            context: WorkflowContext 实例
+            policy: 重试策略
+            failure_strategy: 失败处理策略
+
+        Returns:
+            步骤执行结果
+
+        Raises:
+            Exception: 重试耗尽且策略为 STOP 时抛出
+        """
+        import asyncio
+        last_error: Optional[Exception] = None
+
+        for attempt in range(policy.max_attempts):
+            try:
+                if attempt > 0:
+                    delay = self.compute_delay(policy, attempt - 1)
+                    logger.info(
+                        f"Retry step '{step.name}': attempt {attempt + 1}/{policy.max_attempts}, "
+                        f"delay={delay:.1f}s"
+                    )
+                    await asyncio.sleep(delay)
+
+                # 检查步骤是否有异步执行方法
+                if hasattr(step, 'execute_async'):
+                    result = await step.execute_async(context)
+                else:
+                    # 如果没有异步方法，在事件循环中执行同步方法
+                    result = await asyncio.to_thread(step.execute, context)
+                
+                if attempt > 0:
+                    logger.info(f"Step '{step.name}' succeeded on attempt {attempt + 1}")
+                return result
+
+            except Exception as e:
+                last_error = e
+                is_retryable = any(
+                    isinstance(e, exc_type) for exc_type in policy.retryable_exceptions
+                )
+                logger.warning(
+                    f"Step '{step.name}' attempt {attempt + 1}/{policy.max_attempts} failed: {e} "
+                    f"(retryable={is_retryable})"
+                )
+
+                if not is_retryable or attempt >= policy.max_attempts - 1:
+                    break
+
+        # 重试耗尽
+        if failure_strategy == FailureStrategy.STOP:
+            raise last_error  # type: ignore
+        elif failure_strategy == FailureStrategy.CONTINUE:
+            logger.warning(f"Step '{step.name}' failed, continuing (CONTINUE strategy)")
+            return {}
+        else:
+            logger.warning(f"Step '{step.name}' failed, will rollback (ROLLBACK strategy)")
+            raise last_error  # type: ignore
 
 
 class RollbackChain:

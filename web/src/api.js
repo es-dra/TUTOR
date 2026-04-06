@@ -33,7 +33,7 @@ export const api = {
 
   // 启动工作流
   async startRun(workflowType, params = {}, config = {}) {
-    const res = await fetch(`${API_BASE}/run`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -47,7 +47,7 @@ export const api = {
 
   // 获取运行状态
   async getRunStatus(runId) {
-    const res = await fetch(`${API_BASE}/runs/${runId}`);
+    const res = await fetch(`${API_BASE}/api/v1/workflows/${runId}`);
     const data = await parseResponse(res, '获取状态');
     // 兼容 envelope 格式
     return data.data || data;
@@ -55,7 +55,7 @@ export const api = {
 
   // 列出所有运行
   async listRuns(status = null, workflowType = null, page = 1, limit = 20) {
-    let url = `${API_BASE}/runs`;
+    let url = `${API_BASE}/api/v1/workflows`;
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (workflowType) params.append('workflow_type', workflowType);
@@ -71,7 +71,7 @@ export const api = {
 
   // 删除运行
   async deleteRun(runId) {
-    const res = await fetch(`${API_BASE}/runs/${runId}`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/${runId}`, {
       method: 'DELETE'
     });
     return parseResponse(res, '删除');
@@ -79,7 +79,7 @@ export const api = {
 
   // 批量删除运行
   async batchDeleteRuns(runIds) {
-    const res = await fetch(`${API_BASE}/runs/batch-delete`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/batch-delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ run_ids: runIds })
@@ -89,7 +89,7 @@ export const api = {
 
   // 清理旧运行 (dry_run=true 只返回预览)
   async cleanupOldRuns(status = null, olderThanDays = 7, dryRun = false) {
-    let url = `${API_BASE}/runs/cleanup?older_than_days=${olderThanDays}&dry_run=${dryRun}`;
+    let url = `${API_BASE}/api/v1/workflows/cleanup?older_than_days=${olderThanDays}&dry_run=${dryRun}`;
     if (status) url += `&status=${status}`;
     const res = await fetch(url);
     return parseResponse(res, '清理');
@@ -97,7 +97,7 @@ export const api = {
 
   // 重试失败的工作流
   async retryRun(runId) {
-    const res = await fetch(`${API_BASE}/runs/${runId}/retry`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/${runId}/retry`, {
       method: 'POST'
     });
     return parseResponse(res, '重试');
@@ -105,7 +105,7 @@ export const api = {
 
   // 更新运行标签（归档/收藏）
   async updateRunTags(runId, tags) {
-    const res = await fetch(`${API_BASE}/runs/${runId}/tags`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/${runId}/tags`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tags })
@@ -115,7 +115,7 @@ export const api = {
 
   // 获取SSE事件流
   createEventSource(runId, onMessage, onError) {
-    const eventSource = new EventSource(`${API_BASE}/events/${runId}`);
+    const eventSource = new EventSource(`${API_BASE}/api/v1/events/${runId}`);
 
     eventSource.onmessage = (event) => {
       try {
@@ -177,7 +177,7 @@ export const api = {
 
   // 审批相关
   async listApprovals(runId = null, status = null) {
-    let url = `${API_BASE}/approvals`;
+    let url = `${API_BASE}/api/v1/workflows/approvals`;
     const params = new URLSearchParams();
     if (runId) params.append('run_id', runId);
     if (status) params.append('status', status);
@@ -189,7 +189,7 @@ export const api = {
   },
 
   async approveRequest(approvalId, comment = '') {
-    const res = await fetch(`${API_BASE}/approvals/${approvalId}/approve`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/approvals/${approvalId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comment })
@@ -199,7 +199,7 @@ export const api = {
   },
 
   async rejectRequest(approvalId, comment = '') {
-    const res = await fetch(`${API_BASE}/approvals/${approvalId}/reject`, {
+    const res = await fetch(`${API_BASE}/api/v1/workflows/approvals/${approvalId}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comment })
@@ -217,7 +217,7 @@ export const api = {
 
   // 统计
   async getStats() {
-    const res = await fetch(`${API_BASE}/stats`);
+    const res = await fetch(`${API_BASE}/api/v1/workflows/stats`);
     const data = await parseResponse(res, '获取统计');
     return data.data || data;
   },

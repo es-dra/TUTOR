@@ -1,8 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Brain, FlaskConical, PenTool, SearchCheck, Users, MessageSquare, Activity, Zap, Shield, ChevronRight, ChevronLeft, X, RefreshCw } from 'lucide-react';
 import api from '../../api.js';
 
-function ProjectArena({ project, onBack }) {
+function ProjectArena() {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
+  const [project, setProject] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [debateState, setDebateState] = useState({
     messages: [],
@@ -60,6 +64,12 @@ function ProjectArena({ project, onBack }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
+    if (projectId) {
+      loadProject();
+    }
+  }, [projectId]);
+
+  useEffect(() => {
     // 创建真实的WebSocket连接
     if (project?.id) {
       const ws = api.createWebSocket(project.id, {
@@ -91,6 +101,15 @@ function ProjectArena({ project, onBack }) {
       };
     }
   }, [project?.id]);
+
+  const loadProject = async () => {
+    try {
+      const response = await api.getV3Project(projectId);
+      setProject(response.data);
+    } catch (error) {
+      console.error('Failed to load project:', error);
+    }
+  };
 
   const handleWebSocketMessage = (message) => {
     switch (message.type) {
@@ -249,7 +268,7 @@ function ProjectArena({ project, onBack }) {
         <div className="header-left">
           <button 
             className="btn btn-ghost btn-icon" 
-            onClick={onBack}
+            onClick={() => navigate('/')}
             style={{ marginRight: '1rem' }}
           >
             <ChevronLeft size={20} />

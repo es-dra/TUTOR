@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Brain, BarChart3, FlaskConical, Shield, Settings as SettingsIcon, Plus, AlertTriangle, Sparkles } from 'lucide-react';
 import Dashboard from './pages/Dashboard.jsx';
 import Workflows from './pages/Workflows.jsx';
@@ -12,9 +13,9 @@ import OnboardingGuidance from './components/OnboardingGuidance.jsx';
 import api from './api.js';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('v3-dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
   const [selectedRunId, setSelectedRunId] = useState(null);
-  const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => {
@@ -44,70 +45,15 @@ function App() {
   };
 
   const navItems = [
-    { id: 'v3-dashboard', label: 'v3工作台', icon: Sparkles },
-    { id: 'dashboard', label: '仪表盘', icon: BarChart3 },
-    { id: 'workflows', label: '工作流', icon: FlaskConical },
-    { id: 'approvals', label: '审批', icon: Shield },
-    { id: 'new', label: '新建', icon: Plus },
+    { path: '/', label: 'v3工作台', icon: Sparkles },
+    { path: '/dashboard', label: '仪表盘', icon: BarChart3 },
+    { path: '/workflows', label: '工作流', icon: FlaskConical },
+    { path: '/approvals', label: '审批', icon: Shield },
+    { path: '/new', label: '新建', icon: Plus },
   ];
 
-  const renderPage = () => {
-    if (currentPage === 'v3-arena' && selectedProject) {
-      return (
-        <ProjectArena 
-          project={selectedProject} 
-          onBack={() => {
-            setSelectedProject(null);
-            setCurrentPage('v3-dashboard');
-          }} 
-        />
-      );
-    }
-    
-    switch (currentPage) {
-      case 'v3-dashboard':
-        return (
-          <V3Dashboard 
-            onCreateProject={(project) => {
-              setSelectedProject(project);
-              setCurrentPage('v3-arena');
-            }}
-            onOpenProject={(project) => {
-              setSelectedProject(project);
-              setCurrentPage('v3-arena');
-            }}
-          />
-        );
-      case 'dashboard':
-        return <Dashboard onViewRun={setSelectedRunId} />;
-      case 'workflows':
-        return <Workflows onViewRun={setSelectedRunId} />;
-      case 'approvals':
-        return <Approvals onViewRun={(runId) => {
-          setSelectedRunId(runId);
-          setCurrentPage('workflows');
-        }} />;
-      case 'new':
-        return <NewWorkflow onCreated={(runId) => {
-          setSelectedRunId(runId);
-          setCurrentPage('workflows');
-        }} />;
-      case 'settings':
-        return <SettingsPage />;
-      default:
-        return (
-          <V3Dashboard 
-            onCreateProject={(project) => {
-              setSelectedProject(project);
-              setCurrentPage('v3-arena');
-            }}
-            onOpenProject={(project) => {
-              setSelectedProject(project);
-              setCurrentPage('v3-arena');
-            }}
-          />
-        );
-    }
+  const getCurrentPath = () => {
+    return location.pathname || '/';
   };
 
   return (
@@ -123,7 +69,7 @@ function App() {
           </div>
           <button
             className="btn btn-primary"
-            onClick={() => setCurrentPage('settings')}
+            onClick={() => navigate('/settings')}
             style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }}
           >
             去配置
@@ -133,40 +79,39 @@ function App() {
 
       {/* Header */}
       <header className="header">
-        <div className="logo" onClick={() => setCurrentPage('dashboard')}>
+        <Link to="/" className="logo">
           <div className="logo-icon">
             <Brain size={22} />
           </div>
           <span>TUTOR</span>
-        </div>
+        </Link>
 
         <nav className="nav">
           {navItems.map(item => {
             const Icon = item.icon;
+            const isActive = getCurrentPath() === item.path;
             return (
-              <button
-                key={item.id}
-                className={`nav-link ${currentPage === item.id ? 'active' : ''}`}
-                onClick={() => {
-                  setCurrentPage(item.id);
-                  setSelectedRunId(null);
-                }}
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`nav-link ${isActive ? 'active' : ''}`}
+                onClick={() => setSelectedRunId(null)}
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
-              </button>
+              </Link>
             );
           })}
         </nav>
 
         <div className="header-actions">
-          <button
+          <Link
+            to="/settings"
             className="btn btn-ghost btn-icon"
-            onClick={() => setCurrentPage('settings')}
             title="API 配置"
           >
             <SettingsIcon size={20} />
-          </button>
+          </Link>
           <div className={`status-badge ${health?.status === 'ok' ? 'online' : 'offline'}`}>
             <span className={`status-dot ${health?.status === 'ok' ? 'online' : 'offline'}`} />
             {health?.status === 'ok' ? '在线' : '离线'}
@@ -176,31 +121,76 @@ function App() {
 
       {/* Main Content */}
       <main className="main">
-        {renderPage()}
+        <Routes>
+          <Route 
+            path="/" 
+            element={
+              <V3Dashboard 
+                onCreateProject={(project) => navigate(`/projects/${project.id}`)}
+                onOpenProject={(project) => navigate(`/projects/${project.id}`)}
+              />
+            } 
+          />
+          <Route path="/dashboard" element={<Dashboard onViewRun={setSelectedRunId} />} />
+          <Route path="/workflows" element={<Workflows onViewRun={setSelectedRunId} />} />
+          <Route 
+            path="/approvals" 
+            element={
+              <Approvals onViewRun={(runId) => {
+                setSelectedRunId(runId);
+                navigate('/workflows');
+              }} />
+            } 
+          />
+          <Route 
+            path="/new" 
+            element={
+              <NewWorkflow onCreated={(runId) => {
+                setSelectedRunId(runId);
+                navigate('/workflows');
+              }} />
+            } 
+          />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route 
+            path="/projects/:projectId" 
+            element={<ProjectArena />} 
+          />
+        </Routes>
       </main>
 
-  {/* Workflow Detail Modal */}
-  {selectedRunId && (
-    <WorkflowDetail
-      runId={selectedRunId}
-      onClose={() => setSelectedRunId(null)}
-    />
-  )}
+      {/* Workflow Detail Modal */}
+      {selectedRunId && (
+        <WorkflowDetail
+          runId={selectedRunId}
+          onClose={() => setSelectedRunId(null)}
+        />
+      )}
 
-  {/* Onboarding Guidance */}
-  {showOnboarding && (
-    <OnboardingGuidance 
-      onComplete={() => {
-        setShowOnboarding(false);
-        try {
-          localStorage.setItem('tutorOnboardingCompleted', 'true');
-        } catch (e) {
-          console.warn('Could not save onboarding completion status');
-        }
-      }}
-      onNavigate={(page) => setCurrentPage(page)}
-    />
-  )}
+      {/* Onboarding Guidance */}
+      {showOnboarding && (
+        <OnboardingGuidance 
+          onComplete={() => {
+            setShowOnboarding(false);
+            try {
+              localStorage.setItem('tutorOnboardingCompleted', 'true');
+            } catch (e) {
+              console.warn('Could not save onboarding completion status');
+            }
+          }}
+          onNavigate={(page) => {
+            const pathMap = {
+              'v3-dashboard': '/',
+              'dashboard': '/dashboard',
+              'workflows': '/workflows',
+              'approvals': '/approvals',
+              'new': '/new',
+              'settings': '/settings'
+            };
+            navigate(pathMap[page] || '/');
+          }}
+        />
+      )}
     </div>
   );
 }
