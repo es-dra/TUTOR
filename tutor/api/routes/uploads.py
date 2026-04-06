@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

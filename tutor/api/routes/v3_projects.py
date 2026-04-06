@@ -20,7 +20,7 @@ from tutor.core.project.v3_project import (
     MessageType,
     DEFAULT_ROLES,
 )
-from tutor.core.workflow.engine import WorkflowEngine
+from tutor.core.workflow.base import WorkflowEngine
 from tutor.core.model import ModelGateway
 from tutor.core.workflow.idea import IdeaFlow
 from tutor.core.workflow.experiment import ExperimentFlow

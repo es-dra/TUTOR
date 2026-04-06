@@ -68,59 +68,48 @@ start_service() {
     check_config
     check_dependencies
     
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            echo_warn "服务已经在运行 (PID: $PID)"
-            return 0
-        else
-            echo_warn "发现旧的PID文件，但服务未运行，删除旧文件"
-            rm -f "$PID_FILE"
-        fi
+    # 检查服务是否已经运行
+    if ps aux | grep uvicorn | grep tutor.api.main:app > /dev/null 2>&1; then
+        echo_warn "服务已经在运行"
+        return 0
     fi
     
     echo_info "启动 TUTOR 服务..."
     
     # 启动 uvicorn 服务
-    uvicorn tutor.api.main:app \
+    nohup uvicorn tutor.api.main:app \
         --host 0.0.0.0 \
         --port 8000 \
         --workers 4 \
         --timeout-keep-alive 30 \
-        --log-level warn \
-        --access-logfile "$LOG_DIR/access.log" \
-        --error-logfile "$LOG_DIR/error.log" \
-        --pid "$PID_FILE" \
-        --daemon
+        --log-level warning \
+        --access-log > "$LOG_DIR/uvicorn.log" 2>&1 &
     
     # 等待服务启动
     sleep 3
     
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            echo_info "服务启动成功 (PID: $PID)"
-            return 0
-        else
-            echo_error "服务启动失败"
-            return 1
-        fi
+    # 检查服务是否成功启动
+    if ps aux | grep uvicorn | grep tutor.api.main:app > /dev/null 2>&1; then
+        echo_info "服务启动成功"
+        return 0
     else
-        echo_error "服务启动失败，未生成PID文件"
+        echo_error "服务启动失败"
         return 1
     fi
 }
 
 # 停止服务
 stop_service() {
-    if [ ! -f "$PID_FILE" ]; then
+    # 查找uvicorn进程
+    PIDS=$(ps aux | grep uvicorn | grep tutor.api.main:app | awk '{print $2}')
+    
+    if [ -z "$PIDS" ]; then
         echo_warn "服务未运行"
         return 0
     fi
     
-    PID=$(cat "$PID_FILE")
-    if ps -p "$PID" > /dev/null 2>&1; then
-        echo_info "停止服务 (PID: $PID)..."
+    echo_info "停止服务..."
+    for PID in $PIDS; do
         kill "$PID"
         
         # 等待服务停止
@@ -135,13 +124,9 @@ stop_service() {
             echo_warn "服务停止超时，强制终止"
             kill -9 "$PID"
         fi
-        
-        rm -f "$PID_FILE"
-        echo_info "服务已停止"
-    else
-        echo_warn "服务未运行，但存在PID文件，删除旧文件"
-        rm -f "$PID_FILE"
-    fi
+    done
+    
+    echo_info "服务已停止"
 }
 
 # 重启服务
@@ -152,15 +137,9 @@ restart_service() {
 
 # 查看服务状态
 status_service() {
-    if [ -f "$PID_FILE" ]; then
-        PID=$(cat "$PID_FILE")
-        if ps -p "$PID" > /dev/null 2>&1; then
-            echo_info "服务正在运行 (PID: $PID)"
-            return 0
-        else
-            echo_warn "服务未运行，但存在PID文件"
-            return 1
-        fi
+    if ps aux | grep uvicorn | grep tutor.api.main:app > /dev/null 2>&1; then
+        echo_info "服务正在运行"
+        return 0
     else
         echo_warn "服务未运行"
         return 1
