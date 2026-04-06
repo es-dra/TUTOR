@@ -230,7 +230,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description })
     });
-    return parseResponse(res, '创建项目');
+    const data = await parseResponse(res, '创建项目');
+    return data.data || data;
   },
 
   async listV3Projects(status = null, limit = 50, offset = 0) {
@@ -242,12 +243,14 @@ export const api = {
     if (params.toString()) url += `?${params.toString()}`;
     
     const res = await fetch(url);
-    return parseResponse(res, '获取项目列表');
+    const data = await parseResponse(res, '获取项目列表');
+    return data.data || data;
   },
 
   async getV3Project(projectId) {
     const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}`);
-    return parseResponse(res, '获取项目详情');
+    const data = await parseResponse(res, '获取项目详情');
+    return data.data || data;
   },
 
   async updateV3Project(projectId, data) {
@@ -256,24 +259,28 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
-    return parseResponse(res, '更新项目');
+    const result = await parseResponse(res, '更新项目');
+    return result.data || result;
   },
 
   async deleteV3Project(projectId) {
     const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}`, {
       method: 'DELETE'
     });
-    return parseResponse(res, '删除项目');
+    const data = await parseResponse(res, '删除项目');
+    return data.data || data;
   },
 
   async getV3ProjectConversations(projectId) {
     const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}/conversations`);
-    return parseResponse(res, '获取对话历史');
+    const data = await parseResponse(res, '获取对话历史');
+    return data.data || data;
   },
 
   async listV3Roles() {
     const res = await fetch(`${API_BASE}/api/v3/projects/roles/list`);
-    return parseResponse(res, '获取角色列表');
+    const data = await parseResponse(res, '获取角色列表');
+    return data.data || data;
   },
 
   // V3项目标签管理
@@ -283,7 +290,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tags })
     });
-    return parseResponse(res, '更新项目标签');
+    const data = await parseResponse(res, '更新项目标签');
+    return data.data || data;
   },
 
   async listV3ArchivedProjects(limit = 50, offset = 0) {
@@ -294,7 +302,8 @@ export const api = {
     if (params.toString()) url += `?${params.toString()}`;
     
     const res = await fetch(url);
-    return parseResponse(res, '获取归档项目');
+    const data = await parseResponse(res, '获取归档项目');
+    return data.data || data;
   },
 
   async listV3FavoriteProjects(limit = 50, offset = 0) {
@@ -305,7 +314,8 @@ export const api = {
     if (params.toString()) url += `?${params.toString()}`;
     
     const res = await fetch(url);
-    return parseResponse(res, '获取收藏项目');
+    const data = await parseResponse(res, '获取收藏项目');
+    return data.data || data;
   },
 
   // WebSocket连接
