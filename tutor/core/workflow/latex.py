@@ -109,7 +109,14 @@ class LaTeXRenderStep(WorkflowStep):
         title = self._extract_title(outline)
         authors = config.get("authors", "Anonymous")
         date_str = datetime.now(timezone.utc).strftime("%B %Y")
-        abstract_text = self._get_section_content(polished_sections, "Abstract")
+        # 首先从大纲中提取摘要
+        abstract_text = self._extract_abstract(outline)
+        # 如果大纲中没有摘要，从polished_sections中获取
+        if not abstract_text:
+            abstract_text = self._get_section_content(polished_sections, "Abstract")
+        # 如果还是没有摘要，生成一个默认摘要
+        if not abstract_text:
+            abstract_text = "This paper presents a novel approach to solve a significant problem in the field."
 
         # Render body sections
         body_parts = []
@@ -165,6 +172,14 @@ class LaTeXRenderStep(WorkflowStep):
                 return sec.get("content", "Untitled Paper").strip()
         return "Untitled Paper"
 
+    def _extract_abstract(self, outline: Dict) -> str:
+        """从大纲中提取摘要内容"""
+        for sec in outline.get("sections", []):
+            if "abstract" in sec.get("title", "").lower():
+                return sec.get("content", "").strip()
+        # 如果在大纲中找不到摘要，尝试从polished_sections中获取
+        return ""
+
     def _get_section_content(self, sections: Dict, name: str) -> str:
         for key, data in sections.items():
             if key.lower() == name.lower():
@@ -174,6 +189,9 @@ class LaTeXRenderStep(WorkflowStep):
     def _markdown_to_latex(self, md_text: str) -> str:
         """基本Markdown → LaTeX转换"""
         text = md_text
+
+        # 移除开头的标题（避免与LaTeX section重复）
+        text = re.sub(r'^#{1,3}\s+.+?\n+', '', text, flags=re.MULTILINE)
 
         # Code blocks
         text = re.sub(
@@ -202,8 +220,30 @@ class LaTeXRenderStep(WorkflowStep):
             text,
         )
 
-        # Tables (simple conversion)
-        text = re.sub(r"\|(.+)\|", lambda m: self._table_row(m.group(1)), text)
+        # 改进的表格处理
+        lines = text.split('\n')
+        in_table = False
+        table_rows = []
+        result_lines = []
+        
+        for line in lines:
+            if '|' in line and not in_table:
+                in_table = True
+                table_rows = [line]
+            elif '|' in line and in_table:
+                table_rows.append(line)
+            elif in_table:
+                # 表格结束，进行转换
+                if len(table_rows) >= 2:
+                    latex_table = self._convert_markdown_table(table_rows)
+                    result_lines.append(latex_table)
+                in_table = False
+                table_rows = []
+                result_lines.append(line)
+            else:
+                result_lines.append(line)
+        
+        text = '\n'.join(result_lines)
 
         # Headers (shouldn't appear in body, but just in case)
         text = re.sub(r"^### (.+)$", r"\\subsubsection{\1}", text, flags=re.MULTILINE)
@@ -220,13 +260,68 @@ class LaTeXRenderStep(WorkflowStep):
 
         return text
 
+    def _convert_markdown_table(self, table_rows: List[str]) -> str:
+        """将Markdown表格转换为LaTeX表格"""
+        if not table_rows:
+            return ""
+        
+        # 解析表格行
+        parsed_rows = []
+        for row in table_rows:
+            cells = [c.strip() for c in row.split("|") if c.strip()]
+            if cells:
+                parsed_rows.append(cells)
+        
+        if len(parsed_rows) < 2:
+            return ""
+        
+        # 确定列数
+        num_columns = len(parsed_rows[0])
+        
+        # 生成列格式（默认居中）
+        column_format = "|" + "c|" * num_columns
+        
+        # 构建表格内容
+        table_content = []
+        for i, row in enumerate(parsed_rows):
+            if i == 1 and all(set(cell.strip()) <= {"-", ":", " "} for cell in row):
+                continue  # 跳过分隔行
+            
+            # 处理单元格内容
+            processed_cells = []
+            for cell in row:
+                # 移除Markdown格式
+                cell = re.sub(r"\*\*(.*?)\*\*", r"\\textbf{\1}", cell)
+                cell = re.sub(r"\*(.*?)\*", r"\\textit{\1}", cell)
+                cell = re.sub(r"`(.*?)`", r"\\texttt{\1}", cell)
+                processed_cells.append(cell)
+            
+            table_content.append(" & ".join(processed_cells) + " \\\ \hline")
+        
+        # 生成完整的LaTeX表格
+        latex_table = """\begin{table}[htbp]
+    \centering
+    \begin{tabular}{TABLE_FORMAT}
+        \hline
+        TABLE_CONTENT
+    \end{tabular}
+    \caption{Table}
+    \label{tab:table}
+\end{table}
+"""
+        
+        latex_table = latex_table.replace("TABLE_FORMAT", column_format)
+        latex_table = latex_table.replace("TABLE_CONTENT", "\n        ".join(table_content))
+        
+        return latex_table
+
     def _table_row(self, row: str) -> str:
         cells = [c.strip() for c in row.split("|") if c.strip()]
         if not cells:
             return ""
         if all(set(c.strip()) <= {"-", ":", " "} for c in cells):
             return ""  # separator row
-        return " & ".join(cells) + " \\\\ \\hline\n"
+        return " & ".join(cells) + " \\\ \hline\n"
 
     def _clean_latex(self, text: str) -> str:
         """清理常见的LaTeX问题"""

@@ -862,6 +862,14 @@ def create_app() -> "FastAPI":
     from tutor.api.routes.uploads import router as uploads_router
 
     app.include_router(uploads_router)
+    
+    # WebSocket 端点 - 角色实时互动
+    from tutor.api.routes.websockets import router as websockets_router
+    app.include_router(websockets_router)
+    
+    # V3 Project 端点 - 新一代项目管理
+    from tutor.api.routes.v3_projects import router as v3_projects_router
+    app.include_router(v3_projects_router)
 
     return app
 

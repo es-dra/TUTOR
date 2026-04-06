@@ -220,6 +220,135 @@ export const api = {
     const res = await fetch(`${API_BASE}/stats`);
     const data = await parseResponse(res, '获取统计');
     return data.data || data;
+  },
+
+  // ============ V3 API ============
+  // V3 Project API
+  async createV3Project(name, description = '') {
+    const res = await fetch(`${API_BASE}/api/v3/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description })
+    });
+    return parseResponse(res, '创建项目');
+  },
+
+  async listV3Projects(status = null, limit = 50, offset = 0) {
+    let url = `${API_BASE}/api/v3/projects`;
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (limit !== 50) params.append('limit', String(limit));
+    if (offset > 0) params.append('offset', String(offset));
+    if (params.toString()) url += `?${params.toString()}`;
+    
+    const res = await fetch(url);
+    return parseResponse(res, '获取项目列表');
+  },
+
+  async getV3Project(projectId) {
+    const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}`);
+    return parseResponse(res, '获取项目详情');
+  },
+
+  async updateV3Project(projectId, data) {
+    const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return parseResponse(res, '更新项目');
+  },
+
+  async deleteV3Project(projectId) {
+    const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}`, {
+      method: 'DELETE'
+    });
+    return parseResponse(res, '删除项目');
+  },
+
+  async getV3ProjectConversations(projectId) {
+    const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}/conversations`);
+    return parseResponse(res, '获取对话历史');
+  },
+
+  async listV3Roles() {
+    const res = await fetch(`${API_BASE}/api/v3/projects/roles/list`);
+    return parseResponse(res, '获取角色列表');
+  },
+
+  // V3项目标签管理
+  async updateV3ProjectTags(projectId, tags) {
+    const res = await fetch(`${API_BASE}/api/v3/projects/${projectId}/tags`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags })
+    });
+    return parseResponse(res, '更新项目标签');
+  },
+
+  async listV3ArchivedProjects(limit = 50, offset = 0) {
+    let url = `${API_BASE}/api/v3/projects/list/archived`;
+    const params = new URLSearchParams();
+    if (limit !== 50) params.append('limit', String(limit));
+    if (offset > 0) params.append('offset', String(offset));
+    if (params.toString()) url += `?${params.toString()}`;
+    
+    const res = await fetch(url);
+    return parseResponse(res, '获取归档项目');
+  },
+
+  async listV3FavoriteProjects(limit = 50, offset = 0) {
+    let url = `${API_BASE}/api/v3/projects/list/favorites`;
+    const params = new URLSearchParams();
+    if (limit !== 50) params.append('limit', String(limit));
+    if (offset > 0) params.append('offset', String(offset));
+    if (params.toString()) url += `?${params.toString()}`;
+    
+    const res = await fetch(url);
+    return parseResponse(res, '获取收藏项目');
+  },
+
+  // WebSocket连接
+  createWebSocket(projectId, handlers = {}) {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/ws/projects/${projectId}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+      handlers.onOpen?.();
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handlers.onMessage?.(data);
+      } catch (e) {
+        console.error('Failed to parse WebSocket message:', e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      handlers.onError?.(error);
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket disconnected');
+      handlers.onClose?.();
+    };
+
+    return {
+      send: (type, data = {}) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type, data }));
+        }
+      },
+      close: () => {
+        ws.close();
+      },
+      readyState: () => ws.readyState
+    };
   }
 };
 

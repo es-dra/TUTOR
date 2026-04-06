@@ -1,0 +1,87 @@
+# TUTOR 生产环境配置文件
+# 复制为 config.yaml 并填写实际值
+
+# 调度器配置
+scheduler:
+  max_concurrent: 5
+  budget_limit_usd: 500.0
+  cost_per_idea_usd: 2.0
+  default_timeout_minutes: 60
+  retry_failed: true
+  max_retries: 2
+
+# 模型配置
+model:
+  provider: "deepseek"  # openai, anthropic, deepseek, minimax, local
+  api_base: "https://api.deepseek.com/v1"
+  api_key: "${DEEPSEEK_API_KEY}"  # 从环境变量读取
+  models:
+    debate_a: "deepseek-chat"
+    debate_b: "deepseek-chat"
+    evaluator: "deepseek-chat"
+    reviewer: "deepseek-chat"
+    writer: "deepseek-chat"
+
+# Minimax 模型配置（备用）
+minimax:
+  api_key: "${MINIMAX_API_KEY}"  # 从环境变量读取
+  group_id: "${MINIMAX_GROUP_ID}"  # 从环境变量读取
+  model: "abab6.5-chat"
+
+# 存储配置
+storage:
+  database: "postgresql+asyncpg://tutor:tutor123@postgres:5432/tutor"
+  project_dir: "./data/projects"
+  templates_dir: "./templates"
+
+# 工作流配置
+workflow:
+  idea_generation:
+    max_ideas: 10
+    debate_rounds: 2
+    timeout_minutes: 10
+
+  experiment:
+    max_runtime_hours: 24
+    check_interval_minutes: 5
+
+  reviewing:
+    reviewer_roles: ["theoretical", "engineering", "academic"]
+    timeout_seconds: 60
+
+  writing:
+    output_format: "latex"  # markdown, latex
+    auto_format_check: true
+    expert_review: true
+
+# 日志配置
+logging:
+  level: "WARN"
+  file: "tutor.log"
+  max_size_mb: 50
+  backup_count: 5
+
+# API配置
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  timeout: 300
+  cors_origins: ["*"]
+  secret_key: "${API_SECRET_KEY}"  # 从环境变量读取
+
+# 监控配置
+monitoring:
+  enabled: true
+  interval_seconds: 60
+  gpu_enabled: false
+  metrics_endpoint: "/metrics"
+
+# 安全配置
+security:
+  rate_limit:
+    enabled: true
+    max_requests: 100
+    window_seconds: 60
+  csrf_protection: true
+  secure_headers: true

@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, BarChart3, FlaskConical, Shield, Settings as SettingsIcon, Plus, AlertTriangle } from 'lucide-react';
+import { Brain, BarChart3, FlaskConical, Shield, Settings as SettingsIcon, Plus, AlertTriangle, Sparkles } from 'lucide-react';
 import Dashboard from './pages/Dashboard.jsx';
 import Workflows from './pages/Workflows.jsx';
 import WorkflowDetail from './pages/WorkflowDetail.jsx';
 import NewWorkflow from './pages/NewWorkflow.jsx';
 import Approvals from './pages/Approvals.jsx';
 import SettingsPage from './pages/Settings.jsx';
+import V3Dashboard from './pages/v3/V3Dashboard.jsx';
+import ProjectArena from './pages/v3/ProjectArena.jsx';
 import api from './api.js';
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState('v3-dashboard');
   const [selectedRunId, setSelectedRunId] = useState(null);
+  const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
   const [hasApiKey, setHasApiKey] = useState(false);
 
@@ -31,6 +34,7 @@ function App() {
   };
 
   const navItems = [
+    { id: 'v3-dashboard', label: 'v3工作台', icon: Sparkles },
     { id: 'dashboard', label: '仪表盘', icon: BarChart3 },
     { id: 'workflows', label: '工作流', icon: FlaskConical },
     { id: 'approvals', label: '审批', icon: Shield },
@@ -38,7 +42,32 @@ function App() {
   ];
 
   const renderPage = () => {
+    if (currentPage === 'v3-arena' && selectedProject) {
+      return (
+        <ProjectArena 
+          project={selectedProject} 
+          onBack={() => {
+            setSelectedProject(null);
+            setCurrentPage('v3-dashboard');
+          }} 
+        />
+      );
+    }
+    
     switch (currentPage) {
+      case 'v3-dashboard':
+        return (
+          <V3Dashboard 
+            onCreateProject={(project) => {
+              setSelectedProject(project);
+              setCurrentPage('v3-arena');
+            }}
+            onOpenProject={(project) => {
+              setSelectedProject(project);
+              setCurrentPage('v3-arena');
+            }}
+          />
+        );
       case 'dashboard':
         return <Dashboard onViewRun={setSelectedRunId} />;
       case 'workflows':
@@ -56,7 +85,18 @@ function App() {
       case 'settings':
         return <SettingsPage />;
       default:
-        return <Dashboard onViewRun={setSelectedRunId} />;
+        return (
+          <V3Dashboard 
+            onCreateProject={(project) => {
+              setSelectedProject(project);
+              setCurrentPage('v3-arena');
+            }}
+            onOpenProject={(project) => {
+              setSelectedProject(project);
+              setCurrentPage('v3-arena');
+            }}
+          />
+        );
     }
   };
 

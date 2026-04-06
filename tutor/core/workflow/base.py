@@ -24,6 +24,11 @@ def _get_token_tracker():
 
     return WorkflowTokenTracker, TokenBudget
 
+def _get_plugin_manager():
+    """延迟导入避免循环依赖"""
+    from .plugin import get_plugin_manager
+    return get_plugin_manager()
+
 
 class WorkflowPauseError(Exception):
     """工作流暂停异常"""
@@ -526,8 +531,24 @@ class Workflow(ABC):
 
     def run(self) -> WorkflowResult:
         """运行工作流（支持重试与回滚）"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果已经在事件循环中，使用 create_task
+                task = loop.create_task(self.run_async())
+                return loop.run_until_complete(task)
+            else:
+                # 如果不在事件循环中，直接运行
+                return asyncio.run(self.run_async())
+        except Exception as e:
+            self.logger.error(f"Failed to run workflow: {e}")
+            raise
+
+    async def run_async(self) -> WorkflowResult:
+        """异步运行工作流（支持重试与回滚）"""
         started_at = datetime.now(timezone.utc)
-        self.logger.info(f"Starting workflow: {self.workflow_id}")
+        self.logger.info(f"Starting workflow asynchronously: {self.workflow_id}")
 
         # 启动资源监控（V3）
         self._start_monitoring()
@@ -560,7 +581,8 @@ class Workflow(ABC):
                 step_input = self.context.get_all_state()
 
                 try:
-                    step_output = self._retry_manager.execute_with_retry(
+                    # 异步执行步骤
+                    step_output = await self._retry_manager.execute_with_retry_async(
                         step, self.context, self.retry_policy, failure_strategy
                     )
                 except Exception as step_err:
@@ -609,23 +631,15 @@ class Workflow(ABC):
 
                 # SSE 进度推送
                 if self.context.broadcaster:
-                    import asyncio
-
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            loop.create_task(
-                                self.context.broadcaster.emit(
-                                    self.workflow_id,
-                                    "step",
-                                    {
-                                        "step_index": self._current_step_index,
-                                        "step_name": step.name,
-                                        "total_steps": len(self.steps),
-                                        "status": "completed",
-                                    },
-                                )
-                            )
+                        await self.context.broadcaster.emit(
+                            self.workflow_id, "step", {
+                                "step_index": self._current_step_index,
+                                "step_name": step.name,
+                                "total_steps": len(self.steps),
+                                "status": "completed"
+                            }
+                        )
                     except Exception as e:
                         self.logger.error(f"Failed to emit step progress SSE: {e}")
                 self._current_step_index += 1
@@ -751,11 +765,25 @@ class WorkflowEngine:
 
     def run_workflow(self, workflow_id: str) -> WorkflowResult:
         """运行工作流（首次或恢复）"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                task = loop.create_task(self.run_workflow_async(workflow_id))
+                return loop.run_until_complete(task)
+            else:
+                return asyncio.run(self.run_workflow_async(workflow_id))
+        except Exception as e:
+            self.logger.error(f"Failed to run workflow: {e}")
+            raise
+
+    async def run_workflow_async(self, workflow_id: str) -> WorkflowResult:
+        """异步运行工作流（首次或恢复）"""
         workflow = self.active_workflows.get(workflow_id)
         if not workflow:
             raise ValueError(f"Workflow {workflow_id} not found")
 
-        return workflow.run()
+        return await workflow.run_async()
 
     def resume_workflow(self, workflow_id: str) -> WorkflowResult:
         """恢复暂停的工作流
@@ -763,6 +791,20 @@ class WorkflowEngine:
         前提条件：工作流必须处于 PAUSED 状态（等待审批）。
         调用后会从上一个检查点恢复，继续执行。
         """
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                task = loop.create_task(self.resume_workflow_async(workflow_id))
+                return loop.run_until_complete(task)
+            else:
+                return asyncio.run(self.resume_workflow_async(workflow_id))
+        except Exception as e:
+            self.logger.error(f"Failed to resume workflow: {e}")
+            raise
+
+    async def resume_workflow_async(self, workflow_id: str) -> WorkflowResult:
+        """异步恢复暂停的工作流"""
         workflow = self.active_workflows.get(workflow_id)
         if not workflow:
             raise ValueError(f"Workflow {workflow_id} not found")
@@ -777,7 +819,7 @@ class WorkflowEngine:
         # 从检查点恢复并继续执行
         # initialize() 会读取检查点并设置正确的步骤索引
         workflow.initialize()
-        return workflow.run()
+        return await workflow.run_async()
 
     def is_workflow_paused(self, workflow_id: str) -> bool:
         """检查工作流是否处于暂停状态"""

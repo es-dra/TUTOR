@@ -157,6 +157,11 @@ class ModelGateway:
             "medium": "deepseek-chat",  # 单模型时全用同一个
             "low": "deepseek-chat",
         },
+        "minimax": {
+            "high": "minimax-chat",
+            "medium": "minimax-chat",
+            "low": "minimax-chat",
+        },
         "openai": {
             "high": "gpt-4o",
             "medium": "gpt-4o-mini",
@@ -225,6 +230,8 @@ class ModelGateway:
                 provider = self.config.provider.lower() if self.config.provider else "openai"
                 if provider == "deepseek":
                     self.api_base = "https://api.deepseek.com"
+                elif provider == "minimax":
+                    self.api_base = "https://api.minimax.chat/v1"
                 elif provider == "anthropic":
                     self.api_base = "https://api.anthropic.com"
                 # 否则保持默认的 OpenAI URL
@@ -239,6 +246,15 @@ class ModelGateway:
                 else:
                     logger.warning(
                         "DeepSeek API key not configured. Set DEEPSEEK_API_KEY environment variable "
+                        "or provide api_key in config. Model calls will fail."
+                    )
+            elif provider == "minimax":
+                env_key = os.environ.get("MINIMAX_API_KEY", "")
+                if env_key:
+                    self.api_key = env_key
+                else:
+                    logger.warning(
+                        "Minimax API key not configured. Set MINIMAX_API_KEY environment variable "
                         "or provide api_key in config. Model calls will fail."
                     )
             else:

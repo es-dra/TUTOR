@@ -1,45 +1,58 @@
-# TUTOR Docker image - Fixed for actual project structure
-# The 'tutor/' directory is a Python package, so we copy it as a whole
+# TUTOR Docker image - Optimized
 
+# 构建阶段
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# 安装构建依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY requirements.txt .
+
+# 安装依赖到虚拟环境
+RUN python -m venv /venv && \
+    /venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    /venv/bin/pip install --no-cache-dir "uvicorn[standard]"
+
+# 运行阶段
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime system dependencies
+# 安装运行时依赖
 RUN apt-get update && apt-get install -y \
-    libgomp1 \
     curl \
-    gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for caching
-COPY requirements.txt .
+# 从构建阶段复制虚拟环境
+COPY --from=builder /venv /venv
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install uvicorn explicitly (may not be in requirements.txt)
-RUN pip install --no-cache-dir "uvicorn[standard]"
-
-# Copy the entire tutor package as a directory (preserves Python package structure)
+# 复制应用代码
 COPY tutor /app/tutor
 
-# Create data directory
-RUN mkdir -p /app/data
+# 创建数据目录
+RUN mkdir -p /app/data && \
+    chmod 755 /app/data
 
-# Environment - parent of 'tutor' is the working dir, so 'tutor' package is importable
+# 环境变量
 ENV PYTHONPATH="/app"
 ENV TUTOR_HOME="/app/data"
 ENV DATA_PATH="/app/data/tutor_runs.db"
+ENV PATH="/venv/bin:$PATH"
 
-# Expose API port
+# 暴露API端口
 EXPOSE 8000
 
-# Health check
+# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/live || exit 1
 
-# Default command - run from /app (parent of tutor/) so 'tutor' is importable
-# uvicorn looks for 'api' module which is at /app/tutor/api
-CMD ["uvicorn", "tutor.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 默认命令
+CMD ["uvicorn", "tutor.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--timeout-keep-alive", "30"]
