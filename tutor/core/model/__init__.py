@@ -19,6 +19,7 @@ from requests.exceptions import RequestException, Timeout
 # SecureConfig for encrypted API key storage
 try:
     from tutor.core.secure_config import SecureConfig
+
     SECURE_CONFIG_AVAILABLE = True
 except ImportError:
     SECURE_CONFIG_AVAILABLE = False
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """模型配置"""
+
     provider: str = "openai"
     api_base: str = "https://api.openai.com/v1"
     api_key: str = ""
@@ -64,7 +66,7 @@ class ModelGateway:
     默认配置：
     - provider: openai
     - api_base: https://api.openai.com/v1
-    - models: {"default": "gpt-3.5-turbo"}
+    - models: {"default": "gpt-4o-mini"}
 
     环境变量：
     - OPENAI_API_KEY: API密钥
@@ -72,34 +74,64 @@ class ModelGateway:
     """
 
     DEFAULT_MODELS = {
-        "default": "gpt-3.5-turbo",
-        "innovator": "gpt-4",
-        "synthesizer": "gpt-4",
-        "evaluator": "gpt-4",
-        "analyzer": "gpt-3.5-turbo",
+        "default": "gpt-4o-mini",
+        "innovator": "gpt-4o",
+        "synthesizer": "gpt-4o",
+        "evaluator": "gpt-4o",
+        "analyzer": "gpt-4o-mini",
         # Agent roles for multi-agent workflows
-        "debate_a": "gpt-4",
-        "debate_b": "gpt-4",
-        "reviewer": "gpt-4",
-        "critic": "gpt-4",
-        "pragmatist": "gpt-4",
-        "expert": "gpt-4",
-        "coder": "gpt-4",
+        "debate_a": "gpt-4o",
+        "debate_b": "gpt-4o",
+        "reviewer": "gpt-4o",
+        "critic": "gpt-4o",
+        "pragmatist": "gpt-4o",
+        "expert": "gpt-4o",
+        "coder": "gpt-4o",
+        "skeptic": "gpt-4o",
+        "writer": "gpt-4o",
+        "planner": "gpt-4o",
+        "judge": "gpt-4o",
+        "meta_reviewer": "gpt-4o",
+        "outliner": "gpt-4o",
+        "debater_a": "gpt-4o",
+        "debater_b": "gpt-4o",
+        "analyst": "gpt-4o-mini",
+        "supervisor": "gpt-4o",
+        "executor": "gpt-4o-mini",
+        "polisher": "gpt-4o-mini",
+        "paper_loader": "gpt-4o-mini",
+        "literature_searcher": "gpt-4o-mini",
+        "orchestrator": "gpt-4o",
     }
 
     DEFAULT_FALLBACKS = {
-        "default": ["gpt-3.5-turbo-1106", "gpt-3.5-turbo-16k"],
-        "innovator": ["gpt-4-0613", "gpt-4"],
-        "synthesizer": ["gpt-4-0613", "gpt-4"],
-        "evaluator": ["gpt-4-0613", "gpt-4"],
-        "analyzer": ["gpt-3.5-turbo-1106", "gpt-3.5-turbo-16k"],
-        "debate_a": ["gpt-4-0613", "gpt-4"],
-        "debate_b": ["gpt-4-0613", "gpt-4"],
-        "reviewer": ["gpt-4-0613", "gpt-4"],
-        "critic": ["gpt-4-0613", "gpt-4"],
-        "pragmatist": ["gpt-4-0613", "gpt-4"],
-        "expert": ["gpt-4-0613", "gpt-4"],
-        "coder": ["gpt-4-0613", "gpt-4"],
+        "default": ["gpt-4o-mini", "gpt-4o"],
+        "innovator": ["gpt-4o", "gpt-4o-mini"],
+        "synthesizer": ["gpt-4o", "gpt-4o-mini"],
+        "evaluator": ["gpt-4o", "gpt-4o-mini"],
+        "analyzer": ["gpt-4o-mini", "gpt-4o"],
+        "debate_a": ["gpt-4o", "gpt-4o-mini"],
+        "debate_b": ["gpt-4o", "gpt-4o-mini"],
+        "reviewer": ["gpt-4o", "gpt-4o-mini"],
+        "critic": ["gpt-4o", "gpt-4o-mini"],
+        "pragmatist": ["gpt-4o", "gpt-4o-mini"],
+        "expert": ["gpt-4o", "gpt-4o-mini"],
+        "coder": ["gpt-4o", "gpt-4o-mini"],
+        "skeptic": ["gpt-4o", "gpt-4o-mini"],
+        "writer": ["gpt-4o", "gpt-4o-mini"],
+        "planner": ["gpt-4o", "gpt-4o-mini"],
+        "judge": ["gpt-4o", "gpt-4o-mini"],
+        "meta_reviewer": ["gpt-4o", "gpt-4o-mini"],
+        "outliner": ["gpt-4o", "gpt-4o-mini"],
+        "debater_a": ["gpt-4o", "gpt-4o-mini"],
+        "debater_b": ["gpt-4o", "gpt-4o-mini"],
+        "analyst": ["gpt-4o-mini", "gpt-4o"],
+        "supervisor": ["gpt-4o", "gpt-4o-mini"],
+        "executor": ["gpt-4o-mini", "gpt-4o"],
+        "polisher": ["gpt-4o-mini", "gpt-4o"],
+        "paper_loader": ["gpt-4o-mini", "gpt-4o"],
+        "literature_searcher": ["gpt-4o-mini", "gpt-4o"],
+        "orchestrator": ["gpt-4o", "gpt-4o-mini"],
     }
 
     # Provider-specific model mappings (role -> model ID)
@@ -121,11 +153,33 @@ class ModelGateway:
         },
         "openai": DEFAULT_MODELS.copy(),
         "anthropic": {
-            "default": "claude-3-5-haiku-20241022",
-            "innovator": "claude-3-5-sonnet-20241022",
-            "synthesizer": "claude-3-5-sonnet-20241022",
-            "evaluator": "claude-3-5-sonnet-20241022",
-            "analyzer": "claude-3-5-haiku-20241022",
+            "default": "claude-sonnet-4-20250514",
+            "innovator": "claude-sonnet-4-20250514",
+            "synthesizer": "claude-sonnet-4-20250514",
+            "evaluator": "claude-sonnet-4-20250514",
+            "analyzer": "claude-sonnet-4-20250514",
+            "skeptic": "claude-sonnet-4-20250514",
+            "writer": "claude-sonnet-4-20250514",
+            "planner": "claude-sonnet-4-20250514",
+            "critic": "claude-sonnet-4-20250514",
+            "reviewer": "claude-sonnet-4-20250514",
+            "expert": "claude-sonnet-4-20250514",
+            "coder": "claude-sonnet-4-20250514",
+            "orchestrator": "claude-opus-4-20250414",
+            "judge": "claude-opus-4-20250414",
+            "meta_reviewer": "claude-opus-4-20250414",
+            "debate_a": "claude-sonnet-4-20250514",
+            "debate_b": "claude-sonnet-4-20250514",
+            "pragmatist": "claude-sonnet-4-20250514",
+            "outliner": "claude-sonnet-4-20250514",
+            "debater_a": "claude-sonnet-4-20250514",
+            "debater_b": "claude-sonnet-4-20250514",
+            "analyst": "claude-sonnet-4-20250514",
+            "supervisor": "claude-sonnet-4-20250514",
+            "executor": "claude-sonnet-4-20250514",
+            "polisher": "claude-sonnet-4-20250514",
+            "paper_loader": "claude-sonnet-4-20250514",
+            "literature_searcher": "claude-sonnet-4-20250514",
         },
     }
 
@@ -135,16 +189,34 @@ class ModelGateway:
     # Low: Execution and support roles
     ROLE_TIERS = {
         "high": [
-            "orchestrator", "judge", "planner", "meta_reviewer", "outliner",
-            "innovator", "synthesizer", "evaluator",
+            "orchestrator",
+            "judge",
+            "planner",
+            "meta_reviewer",
+            "outliner",
+            "innovator",
+            "synthesizer",
+            "evaluator",
         ],
         "medium": [
-            "debater_a", "debater_b", "analyst", "writer", "supervisor",
-            "reviewer", "expert", "skeptic",
+            "debater_a",
+            "debater_b",
+            "analyst",
+            "writer",
+            "supervisor",
+            "reviewer",
+            "expert",
+            "skeptic",
         ],
         "low": [
-            "executor", "polisher", "analyzer", "critic", "pragmatist",
-            "coder", "paper_loader", "literature_searcher",
+            "executor",
+            "polisher",
+            "analyzer",
+            "critic",
+            "pragmatist",
+            "coder",
+            "paper_loader",
+            "literature_searcher",
         ],
     }
 
@@ -165,12 +237,12 @@ class ModelGateway:
         "openai": {
             "high": "gpt-4o",
             "medium": "gpt-4o-mini",
-            "low": "gpt-3.5-turbo",
+            "low": "gpt-4o-mini",
         },
         "anthropic": {
-            "high": "claude-3-5-sonnet-20241022",
-            "medium": "claude-3-5-haiku-20241022",
-            "low": "claude-3-5-haiku-20241022",
+            "high": "claude-opus-4-20250414",
+            "medium": "claude-sonnet-4-20250514",
+            "low": "claude-sonnet-4-20250514",
         },
     }
 
@@ -188,17 +260,21 @@ class ModelGateway:
             self.models = self.config.models
         else:
             # 使用层级分配，基于 tier_models 构建角色映射
-            provider = self.config.provider.lower() if self.config.provider else "openai"
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
             if provider in self.PROVIDER_TIER_MODELS:
                 tier_models = self.PROVIDER_TIER_MODELS[provider]
                 # 构建完整角色->模型映射
                 self.models = {}
                 for tier, roles in self.ROLE_TIERS.items():
-                    model = tier_models.get(tier, tier_models.get("high", "gpt-3.5-turbo"))
+                    model = tier_models.get(
+                        tier, tier_models.get("high", "gpt-4o-mini")
+                    )
                     for role in roles:
                         self.models[role] = model
                 # 添加 default 角色
-                self.models["default"] = tier_models.get("high", "gpt-3.5-turbo")
+                self.models["default"] = tier_models.get("high", "gpt-4o-mini")
             else:
                 self.models = self.DEFAULT_MODELS.copy()
 
@@ -207,7 +283,9 @@ class ModelGateway:
             self.fallback_models = self.config.fallback_models
         else:
             # 根据 provider 选择默认 fallback
-            provider = self.config.provider.lower() if self.config.provider else "openai"
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
             if provider == "deepseek":
                 # DeepSeek 通常不需要 fallback
                 self.fallback_models = {}
@@ -227,7 +305,9 @@ class ModelGateway:
                 self.api_base = env_base
             else:
                 # 根据 provider 设置默认 API base
-                provider = self.config.provider.lower() if self.config.provider else "openai"
+                provider = (
+                    self.config.provider.lower() if self.config.provider else "openai"
+                )
                 if provider == "deepseek":
                     self.api_base = "https://api.deepseek.com"
                 elif provider == "minimax":
@@ -238,7 +318,9 @@ class ModelGateway:
 
         # 验证配置
         if not self.api_key:
-            provider = self.config.provider.lower() if self.config.provider else "openai"
+            provider = (
+                self.config.provider.lower() if self.config.provider else "openai"
+            )
             if provider == "deepseek":
                 env_key = os.environ.get("DEEPSEEK_API_KEY", "")
                 if env_key:
@@ -292,7 +374,9 @@ class ModelGateway:
 
                 return ModelConfig(
                     provider="openai",
-                    api_base=os.environ.get("TUTOR_API_BASE", "https://api.openai.com/v1"),
+                    api_base=os.environ.get(
+                        "TUTOR_API_BASE", "https://api.openai.com/v1"
+                    ),
                     api_key=api_key,
                     models=self.DEFAULT_MODELS.copy(),
                 )
@@ -328,44 +412,49 @@ class ModelGateway:
                 "Install with: pip install pyyaml"
             )
 
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
 
         if cfg is None:
             cfg = {}
 
-        model_cfg = cfg.get('model', {})
+        model_cfg = cfg.get("model", {})
 
         # 获取 API key - 优先使用环境变量，然后是配置文件（可能是加密的）
-        api_key = os.environ.get('OPENAI_API_KEY', '')
+        api_key = os.environ.get("OPENAI_API_KEY", "")
 
         # 如果环境变量没有，尝试从SecureConfig获取（支持加密存储）
         if not api_key and SECURE_CONFIG_AVAILABLE:
-            config_file_key = model_cfg.get('api_key', '')
+            config_file_key = model_cfg.get("api_key", "")
             if config_file_key:
                 # 检查是否是加密格式
-                if isinstance(config_file_key, str) and config_file_key.startswith('ENCRYPTED:'):
+                if isinstance(config_file_key, str) and config_file_key.startswith(
+                    "ENCRYPTED:"
+                ):
                     # 使用SecureConfig解密
                     secure_config = SecureConfig()
-                    api_key = secure_config.get('OPENAI_API_KEY', '')
+                    api_key = secure_config.get("OPENAI_API_KEY", "")
                 else:
                     api_key = config_file_key
 
         # 如果仍然没有API key，尝试从配置文件中的非加密字段获取
         if not api_key:
-            api_key = model_cfg.get('api_key', '')
+            api_key = model_cfg.get("api_key", "")
 
         return ModelConfig(
-            provider=model_cfg.get('provider', 'openai'),
-            api_base=model_cfg.get('api_base', os.environ.get("TUTOR_API_BASE", "https://api.openai.com/v1")),
+            provider=model_cfg.get("provider", "openai"),
+            api_base=model_cfg.get(
+                "api_base",
+                os.environ.get("TUTOR_API_BASE", "https://api.openai.com/v1"),
+            ),
             api_key=api_key,
-            models=model_cfg.get('models', self.DEFAULT_MODELS.copy()),
+            models=model_cfg.get("models", self.DEFAULT_MODELS.copy()),
         )
 
     def _parse_simple_config(self, config_str: str) -> ModelConfig:
         """解析简单配置字符串"""
         # 如果看起来像 API key
-        if config_str.startswith('sk-') or config_str.startswith('sk-'):
+        if config_str.startswith("sk-") or config_str.startswith("sk-"):
             return ModelConfig(
                 provider="openai",
                 api_base=os.environ.get("TUTOR_API_BASE", "https://api.openai.com/v1"),
@@ -374,7 +463,7 @@ class ModelGateway:
             )
 
         # 如果是 URL
-        if config_str.startswith('http'):
+        if config_str.startswith("http"):
             return ModelConfig(
                 provider="openai",
                 api_base=config_str,
@@ -430,7 +519,7 @@ class ModelGateway:
                 except ModelError as e:
                     last_error = e
                     if self._is_retryable(e) and retry_count < self.max_retries:
-                        delay = self.retry_base_delay * (2 ** retry_count)
+                        delay = self.retry_base_delay * (2**retry_count)
                         logger.warning(
                             f"Retryable error for {attempt_model_id}, "
                             f"retrying in {delay:.1f}s (attempt {retry_count + 1}/{self.max_retries})"
@@ -451,11 +540,9 @@ class ModelGateway:
     def _resolve_model(self, model_name: str) -> Optional[Tuple[str, List[str]]]:
         """解析模型名，返回(model_id, [fallback chain])"""
         if model_name not in self.models:
-            if 'default' in self.models:
-                logger.warning(
-                    f"Model '{model_name}' not found, using 'default' model"
-                )
-                model_name = 'default'
+            if "default" in self.models:
+                logger.warning(f"Model '{model_name}' not found, using 'default' model")
+                model_name = "default"
             else:
                 return None
 
@@ -476,7 +563,16 @@ class ModelGateway:
         """判断错误是否可重试"""
         msg = str(error).lower()
         # Timeout, rate limit, server errors are retryable
-        retryable_keywords = ['timeout', 'rate limit', '429', '500', '502', '503', '504', 'service unavailable']
+        retryable_keywords = [
+            "timeout",
+            "rate limit",
+            "429",
+            "500",
+            "502",
+            "503",
+            "504",
+            "service unavailable",
+        ]
         return any(k in msg for k in retryable_keywords)
 
     def _call_api(
@@ -491,12 +587,12 @@ class ModelGateway:
             "model": model_id,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens
+            "max_tokens": max_tokens,
         }
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         logger.info(f"Calling model {model_id}")
@@ -507,7 +603,7 @@ class ModelGateway:
                 f"{self.api_base}/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=60,
             )
 
             # Handle rate limiting explicitly
@@ -552,7 +648,7 @@ class ModelGateway:
             response = requests.get(
                 f"{self.api_base}/models",
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                timeout=10
+                timeout=10,
             )
             success: bool = response.status_code == 200
             return success
@@ -615,7 +711,7 @@ class ModelGateway:
         # 构建完整的角色->模型映射
         role_to_model = {}
         for tier, roles in self.ROLE_TIERS.items():
-            model = tier_models.get(tier, tier_models.get("high", "gpt-3.5-turbo"))
+                    model = tier_models.get(tier, tier_models.get("high", "gpt-4o-mini"))
             for role in roles:
                 role_to_model[role] = model
 
@@ -649,7 +745,7 @@ class ModelGateway:
         tier = self.get_role_tier(role)
         provider = self.config.provider.lower() if self.config.provider else "openai"
         tier_models = self.PROVIDER_TIER_MODELS.get(provider, {})
-        return tier_models.get(tier, tier_models.get("high", "gpt-3.5-turbo"))
+        return tier_models.get(tier, tier_models.get("high", "gpt-4o-mini"))
 
     def list_models(self) -> List[str]:
         """列出可用的模型名称"""
@@ -658,12 +754,13 @@ class ModelGateway:
 
 class ModelError(Exception):
     """模型调用异常"""
+
     pass
 
 
 # 便捷函数
 def create_gateway(
-    config: Union[str, Dict[str, Any], ModelConfig, None] = None
+    config: Union[str, Dict[str, Any], ModelConfig, None] = None,
 ) -> ModelGateway:
     """创建 ModelGateway 实例的便捷函数"""
     return ModelGateway(config)
@@ -675,7 +772,9 @@ if __name__ == "__main__":
 
     try:
         gateway = ModelGateway()
-        print(f"Config: provider={gateway.config.provider}, api_base={gateway.api_base}")
+        print(
+            f"Config: provider={gateway.config.provider}, api_base={gateway.api_base}"
+        )
         print(f"Available models: {gateway.list_models()}")
 
         if gateway.validate_connection():

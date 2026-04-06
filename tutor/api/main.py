@@ -381,18 +381,22 @@ def create_app() -> "FastAPI":
     @app.get("/health", tags=["system"])
     async def health_check():
         """健康检查（兼容性）"""
-        return {
-            "status": "ok",
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        }
+        return success_response(
+            data={
+                "status": "ok",
+                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            }
+        )
 
     @app.get("/health/live", tags=["system"])
     async def health_live():
         """Liveness Probe - 应用是否存活"""
-        return {
-            "status": "alive",
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        }
+        return success_response(
+            data={
+                "status": "alive",
+                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            }
+        )
 
     @app.get("/health/ready", tags=["system"])
     async def health_ready():
@@ -708,7 +712,12 @@ def create_app() -> "FastAPI":
             run_id, "cancelled", {"message": "Run cancelled by user"}
         )
 
-        return {"status": "cancelled", "run_id": run_id}
+        return success_response(
+            data={
+                "status": "cancelled",
+                "run_id": run_id,
+            }
+        )
 
     @app.get("/events/{run_id}", tags=["events"])
     async def event_stream(run_id: str):
@@ -862,13 +871,15 @@ def create_app() -> "FastAPI":
     from tutor.api.routes.uploads import router as uploads_router
 
     app.include_router(uploads_router)
-    
+
     # WebSocket 端点 - 角色实时互动
     from tutor.api.routes.websockets import router as websockets_router
+
     app.include_router(websockets_router)
-    
+
     # V3 Project 端点 - 新一代项目管理
     from tutor.api.routes.v3_projects import router as v3_projects_router
+
     app.include_router(v3_projects_router)
 
     return app

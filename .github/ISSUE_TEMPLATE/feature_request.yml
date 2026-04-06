@@ -1,0 +1,62 @@
+name: Feature Request
+description: Suggest an idea or improvement for TUTOR
+title: "[FEATURE] "
+labels: ["enhancement"]
+assignees: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please fill out the template below to help us understand your idea.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Clear and concise description of the feature request
+      placeholder: Please describe the feature you'd like to see
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation / Use Case
+      description: Why is this feature needed? Please describe the problem it solves or the use case it enables
+      placeholder: Explain why this feature would be valuable to you or the community
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Please describe any alternative solutions or features you've considered
+      placeholder: |
+        - Alternative 1: ...
+        - Alternative 2: ...
+        - None, this is a novel idea
+      render: markdown
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context or screenshots about the feature request here
+      placeholder: |
+        - Related to workflow type: idea/experiment/review/write
+        - Screenshots if applicable
+        - References to similar tools or papers
+      render: markdown
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      description: Please confirm the following
+      options:
+        - label: I have checked existing issues for similar feature requests
+          required: true
+        - label: I have read the [Contributing Guidelines](.github/CONTRIBUTING.md)
+          required: true

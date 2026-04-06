@@ -3,28 +3,23 @@
   "provider": {
     "minimax": {
       "name": "MiniMax",
-      "api_key": "${MINIMAX_API_KEY}",
-      "api_base": "https://api.minimax.chat/v1",
       "models": {
         "minimax-m2.7": {
           "name": "MiniMax M2.7",
-          "temperature": 0.7,
+          "temperature": true,
           "top_p": 0.95,
           "max_tokens": 8192
         },
         "minimax-m2.7-highspeed": {
           "name": "MiniMax M2.7 Highspeed",
-          "temperature": 0.5,
+          "temperature": true,
           "top_p": 0.95,
           "max_tokens": 4096
         }
       }
     }
   },
-  "model": {
-    "default": "minimax/minimax-m2.7",
-    "fast": "minimax/minimax-m2.7-highspeed"
-  },
+  "model": "minimax/minimax-m2.7",
   "plugin": ["oh-my-openagent@latest"],
   "tools": {
     "edit": true,

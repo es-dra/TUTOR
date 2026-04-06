@@ -8,6 +8,7 @@ import Approvals from './pages/Approvals.jsx';
 import SettingsPage from './pages/Settings.jsx';
 import V3Dashboard from './pages/v3/V3Dashboard.jsx';
 import ProjectArena from './pages/v3/ProjectArena.jsx';
+import OnboardingGuidance from './components/OnboardingGuidance.jsx';
 import api from './api.js';
 
 function App() {
@@ -16,6 +17,15 @@ function App() {
   const [selectedProject, setSelectedProject] = useState(null);
   const [health, setHealth] = useState(null);
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    // Check if onboarding has been completed before
+    try {
+      const completed = localStorage.getItem('tutorOnboardingCompleted');
+      return !completed;
+    } catch (e) {
+      return true; // Show onboarding if we can't check
+    }
+  });
 
   useEffect(() => {
     api.health().then(setHealth).catch(console.error);
@@ -169,13 +179,28 @@ function App() {
         {renderPage()}
       </main>
 
-      {/* Workflow Detail Modal */}
-      {selectedRunId && (
-        <WorkflowDetail
-          runId={selectedRunId}
-          onClose={() => setSelectedRunId(null)}
-        />
-      )}
+  {/* Workflow Detail Modal */}
+  {selectedRunId && (
+    <WorkflowDetail
+      runId={selectedRunId}
+      onClose={() => setSelectedRunId(null)}
+    />
+  )}
+
+  {/* Onboarding Guidance */}
+  {showOnboarding && (
+    <OnboardingGuidance 
+      onComplete={() => {
+        setShowOnboarding(false);
+        try {
+          localStorage.setItem('tutorOnboardingCompleted', 'true');
+        } catch (e) {
+          console.warn('Could not save onboarding completion status');
+        }
+      }}
+      onNavigate={(page) => setCurrentPage(page)}
+    />
+  )}
     </div>
   );
 }
