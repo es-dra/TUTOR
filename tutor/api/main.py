@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 try:
-    from fastapi import HTTPException, FastAPI, Request
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.responses import JSONResponse, StreamingResponse
 except ImportError:
     HTTPException = Exception
@@ -26,9 +26,9 @@ except ImportError:
     Fast = None
 
 from tutor.api.models import (
-    success_response,
     error_response,
     paginated_response,
+    success_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class RateLimiter:
 
     def get_retry_after(self, client_id: str) -> int:
         """获取需要等待的秒数"""
-        if client_id not in self.requests[client_id]:
+        if client_id not in self.requests or not self.requests[client_id]:
             return 0
 
         now = time.time()
@@ -381,22 +381,22 @@ def create_app() -> "FastAPI":
     @app.get("/health", tags=["system"])
     async def health_check():
         """健康检查（兼容性）"""
-        return success_response(
-            data={
-                "status": "ok",
-                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-            }
-        )
+        payload = {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        }
+        # 兼容旧版(top-level status)和新版(envelope)
+        return {"success": True, "data": payload, **payload}
 
     @app.get("/health/live", tags=["system"])
     async def health_live():
         """Liveness Probe - 应用是否存活"""
-        return success_response(
-            data={
-                "status": "alive",
-                "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-            }
-        )
+        payload = {
+            "status": "alive",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        }
+        # 兼容旧版(top-level status)和新版(envelope)
+        return {"success": True, "data": payload, **payload}
 
     @app.get("/health/ready", tags=["system"])
     async def health_ready():
@@ -412,8 +412,9 @@ def create_app() -> "FastAPI":
 
             storage_path = Path.cwd()
             usage = shutil.disk_usage(storage_path)
-            checks["disk_ok"] = usage.percent < 95
-            checks["disk_usage_percent"] = round(usage.percent, 2)
+            used_percent = (usage.used / usage.total * 100) if usage.total else 100
+            checks["disk_ok"] = used_percent < 95
+            checks["disk_usage_percent"] = round(used_percent, 2)
         except Exception as e:
             checks["disk_ok"] = False
             checks["disk_error"] = str(e)
@@ -431,6 +432,129 @@ def create_app() -> "FastAPI":
         status_code = 200 if is_ready else 503
         return JSONResponse(content=checks, status_code=status_code)
 
+    # --- Legacy compatibility routes ---
+    @app.post("/run", response_model=RunResponse, tags=["legacy"])
+    async def start_run_legacy(request: RunRequest):
+        valid_types = WorkflowType.all()
+        if request.workflow_type not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid workflow_type '{request.workflow_type}'. Must be one of: {valid_types}",
+            )
+
+        run_id = str(uuid.uuid4())
+        run_storage.create_run(
+            run_id=run_id,
+            workflow_type=request.workflow_type,
+            params=request.params,
+            config=request.config,
+        )
+        asyncio.create_task(
+            _execute_workflow(run_id, request, run_storage, broadcaster)
+        )
+        return RunResponse(
+            run_id=run_id,
+            status="pending",
+            workflow_type=request.workflow_type,
+            message=f"Workflow '{request.workflow_type}' started. Run ID: {run_id}",
+        )
+
+    @app.get("/runs/{run_id}", tags=["legacy"])
+    async def get_run_legacy(run_id: str):
+        run = run_storage.get_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+        return success_response(data=RunStatusResponse(**run).model_dump())
+
+    @app.get("/runs", tags=["legacy"])
+    async def list_runs_legacy(
+        status: Optional[str] = None,
+        workflow_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ):
+        result = run_storage.list_runs(
+            status=status,
+            workflow_type=workflow_type,
+            limit=limit,
+            offset=offset,
+        )
+        return paginated_response(
+            items=result.get("runs", []),
+            total=result.get("total", 0),
+            limit=limit,
+            offset=offset,
+        )
+
+    @app.get("/stats", tags=["legacy"])
+    async def get_stats_legacy():
+        return success_response(data=run_storage.get_stats())
+
+    @app.delete("/runs/{run_id}", tags=["legacy"])
+    async def delete_run_legacy(run_id: str):
+        success = run_storage.delete_run(run_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+        return success_response(data={"run_id": run_id, "status": "deleted"})
+
+    @app.post("/runs/{run_id}/cancel", tags=["legacy"])
+    async def cancel_run_legacy(run_id: str):
+        run = run_storage.get_run(run_id)
+        if not run:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+        if run["status"] not in ["pending", "running"]:
+            raise HTTPException(
+                status_code=400, detail=f"Cannot cancel run in status '{run['status']}'"
+            )
+        broadcaster.signal_cancel(run_id)
+        run_storage.update_status(run_id, "cancelled")
+        return success_response(data={"run_id": run_id, "cancelled": True})
+
+    @app.get("/approvals", tags=["legacy"])
+    async def list_approvals_legacy():
+        from tutor.core.workflow.approval import approval_manager as am
+
+        approvals = [req.to_dict() for req in am.list_all()]
+        return {"total": len(approvals), "approvals": approvals}
+
+    @app.get("/approvals/pending", tags=["legacy"])
+    async def list_pending_approvals_legacy():
+        from tutor.core.workflow.approval import approval_manager as am
+
+        approvals = [req.to_dict() for req in am.list_pending()]
+        return {"total": len(approvals), "approvals": approvals}
+
+    @app.get("/approvals/{approval_id}", tags=["legacy"])
+    async def get_approval_legacy(approval_id: str):
+        from tutor.core.workflow.approval import approval_manager as am
+
+        req = am.get_request(approval_id)
+        if not req:
+            raise HTTPException(status_code=404, detail="Approval not found")
+        return req.to_dict()
+
+    @app.post("/approvals/{approval_id}/approve", tags=["legacy"])
+    async def approve_approval_legacy(approval_id: str):
+        from tutor.core.workflow.approval import approval_manager as am
+
+        ok = am.approve(approval_id, by="user", comment="")
+        if not ok:
+            raise HTTPException(
+                status_code=400, detail="Approval not found or not pending"
+            )
+        return {"status": "approved", "approval_id": approval_id}
+
+    @app.post("/approvals/{approval_id}/reject", tags=["legacy"])
+    async def reject_approval_legacy(approval_id: str):
+        from tutor.core.workflow.approval import approval_manager as am
+
+        ok = am.reject(approval_id, by="user", comment="")
+        if not ok:
+            raise HTTPException(
+                status_code=400, detail="Approval not found or not pending"
+            )
+        return {"status": "rejected", "approval_id": approval_id}
+
     @app.get("/metrics", tags=["system"])
     async def prometheus_metrics():
         """Prometheus metrics endpoint"""
@@ -444,38 +568,47 @@ def create_app() -> "FastAPI":
     # --- API v1 Routes ---
     # 工作流管理端点
     from tutor.api.routes.workflows import router as workflows_router
+
     app.include_router(workflows_router)
 
     # 事件流端点
     from tutor.api.routes.events import router as events_router
+
     app.include_router(events_router)
 
     # 用户认证端点（无需API Key认证）
     from tutor.api.routes.auth import router as auth_router
+
     app.include_router(auth_router)
 
     # 用户管理端点（无需API Key认证）
     from tutor.api.routes.users import router as users_router
+
     app.include_router(users_router)
 
     # Provider 配置端点
     from tutor.api.routes.providers import router as providers_router
+
     app.include_router(providers_router)
 
     # Project 项目管理端点
     from tutor.api.routes.projects import router as projects_router
+
     app.include_router(projects_router)
 
     # File Upload 端点
     from tutor.api.routes.uploads import router as uploads_router
+
     app.include_router(uploads_router)
 
     # WebSocket 端点 - 角色实时互动
     from tutor.api.routes.websockets import router as websockets_router
+
     app.include_router(websockets_router)
 
     # V3 Project 端点 - 新一代项目管理
     from tutor.api.routes.v3_projects import router as v3_projects_router
+
     app.include_router(v3_projects_router)
 
     return app
@@ -514,14 +647,15 @@ async def _execute_workflow(
 ):
     """后台执行工作流"""
     try:
+        import os
+        from pathlib import Path
+
+        from tutor.core.model import ModelGateway
         from tutor.core.workflow.base import (
             WorkflowEngine,
             register_workflow_engine,
             unregister_workflow_engine,
         )
-        from tutor.core.model import ModelGateway
-        from pathlib import Path
-        import os
 
         _load_workflow_classes()
 

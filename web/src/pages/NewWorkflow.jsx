@@ -71,11 +71,22 @@ function NewWorkflow({ onCreated }) {
     try {
       const res = await fetch('/api/v1/projects');
       const data = await res.json();
-      if (data.projects) {
+      // 兼容三种格式：
+      // 1) 直接数组: [...]
+      // 2) Envelope: { success, data: [...] }
+      // 3) Legacy: { projects: [...] }
+      if (Array.isArray(data)) {
+        setExistingProjects(data);
+      } else if (Array.isArray(data?.data)) {
+        setExistingProjects(data.data);
+      } else if (Array.isArray(data?.projects)) {
         setExistingProjects(data.projects);
+      } else {
+        setExistingProjects([]);
       }
     } catch (err) {
       console.error('加载项目失败:', err);
+      setExistingProjects([]);
     }
   };
 

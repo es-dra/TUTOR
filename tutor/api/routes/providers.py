@@ -7,23 +7,24 @@
 - POST /api/v1/providers/{name}/validate - 验证 Provider 连接
 """
 
-import os
 import logging
-from typing import Dict, List, Optional, Any
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+import os
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 from tutor.core.providers import (
-    OpenAIProvider,
-    DeepSeekProvider,
     AnthropicProvider,
     AzureProvider,
+    DeepSeekProvider,
     LocalProvider,
     MinimaxProvider,
-    ProviderRouter,
+    OpenAIProvider,
     ProviderConfig,
+    ProviderRouter,
 )
 from tutor.core.secure_config import SecureConfig
 
@@ -61,13 +62,16 @@ class ProviderConfigManager:
 
         try:
             self._secure_config = SecureConfig.load(
-                self.config_path,
-                master_key=os.environ.get("TUTOR_MASTER_KEY", "")
+                self.config_path, master_key=os.environ.get("TUTOR_MASTER_KEY", "")
             )
             # 加载每个 Provider 的配置
             for name in PROVIDER_CLASSES:
                 self._provider_configs[name] = {
-                    "api_key": self._secure_config.get(f"{name}_api_key", ""),
+                    "api_key": (
+                        "ENCRYPTED:***"
+                        if self._secure_config.get(f"{name}_api_key", "")
+                        else ""
+                    ),
                     "api_base": self._secure_config.get(f"{name}_api_base", ""),
                     "enabled": True,
                     "priority": 1,
@@ -85,10 +89,12 @@ class ProviderConfigManager:
                 instance = cls(api_key="")
                 configs[name] = {
                     "api_key": "",
-                    "api_base": getattr(instance, 'api_base', '') or getattr(instance, 'DEFAULT_API_BASE', ''),
+                    "api_base": getattr(instance, "api_base", "")
+                    or getattr(instance, "DEFAULT_API_BASE", ""),
                     "enabled": True,
                     "priority": 1,
-                    "models": getattr(instance, 'models', {}) or getattr(instance, 'DEFAULT_MODELS', {}),
+                    "models": getattr(instance, "models", {})
+                    or getattr(instance, "DEFAULT_MODELS", {}),
                 }
             except Exception:
                 configs[name] = {
@@ -108,19 +114,24 @@ class ProviderConfigManager:
         """获取所有配置"""
         return self._provider_configs.copy()
 
-    def update_provider(self, name: str, api_key: str = "", api_base: str = "", **kwargs) -> Dict[str, Any]:
+    def update_provider(
+        self, name: str, api_key: str = "", api_base: str = "", **kwargs
+    ) -> Dict[str, Any]:
         """更新 Provider 配置（加密存储）"""
         if name not in self._provider_configs:
             raise ValueError(f"Unknown provider: {name}")
 
         # 初始化 SecureConfig（如果需要保存）
         if api_key and not self._secure_config:
-            self._secure_config = SecureConfig(master_key=os.environ.get("TUTOR_MASTER_KEY", ""))
+            self._secure_config = SecureConfig(
+                master_key=os.environ.get("TUTOR_MASTER_KEY", "")
+            )
 
         # 保存加密的 API Key
         if api_key:
             if self._secure_config and self._secure_config._master_key:
                 self._secure_config.set_encrypted(f"{name}_api_key", api_key)
+                self._provider_configs[name]["api_key"] = "ENCRYPTED:***"
             else:
                 # 无加密密钥时直接存储（仅开发模式）
                 self._provider_configs[name]["api_key"] = api_key
@@ -146,7 +157,8 @@ class ProviderConfigManager:
             os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
             # 保存加密数据
             for name, config in self._provider_configs.items():
-                if config.get("api_key"):
+                api_key = config.get("api_key")
+                if api_key and not str(api_key).startswith("ENCRYPTED:"):
                     self._secure_config.set(f"{name}_api_key", config["api_key"])
                 if config.get("api_base"):
                     self._secure_config.set(f"{name}_api_base", config["api_base"])
@@ -178,17 +190,19 @@ def get_config_manager() -> ProviderConfigManager:
 
 class ProviderStatus(BaseModel):
     """Provider 状态"""
+
     name: str
     enabled: bool
     connected: bool
     priority: int
     default_model: Optional[str] = None
     api_base: Optional[str] = None
-    models: Dict[str, str] = {}
+    models: Dict[str, str] = Field(default_factory=dict)
 
 
 class ProviderConfigUpdate(BaseModel):
     """Provider 配置更新"""
+
     api_key: Optional[str] = None
     api_base: Optional[str] = None
     api_version: Optional[str] = None
@@ -200,9 +214,17 @@ class ProviderConfigUpdate(BaseModel):
 
 class ValidationResult(BaseModel):
     """验证结果"""
+
     provider: str
     success: bool
     message: str
+
+
+class ProviderValidationRequest(BaseModel):
+    """Provider 连接验证请求体"""
+
+    api_key: Optional[str] = None
+    api_base: Optional[str] = None
 
 
 @router.get("", response_model=Dict[str, ProviderStatus])
@@ -222,10 +244,7 @@ async def list_providers():
         # 创建实例进行验证
         try:
             cls = PROVIDER_CLASSES[name]
-            instance = cls(
-                api_key=api_key or "dummy",
-                api_base=cfg.get("api_base", "")
-            )
+            instance = cls(api_key=api_key or "dummy", api_base=cfg.get("api_base", ""))
             connected = instance.validate_connection() if api_key else False
             providers[name] = ProviderStatus(
                 name=name,
@@ -260,7 +279,7 @@ async def get_provider(provider_name: str):
     if provider_name not in PROVIDER_CLASSES:
         raise HTTPException(
             status_code=404,
-            detail=f"Provider '{provider_name}' not found. Available: {list(PROVIDER_CLASSES.keys())}"
+            detail=f"Provider '{provider_name}' not found. Available: {list(PROVIDER_CLASSES.keys())}",
         )
 
     mgr = get_config_manager()
@@ -299,8 +318,7 @@ async def update_provider(
     """
     if provider_name not in PROVIDER_CLASSES:
         raise HTTPException(
-            status_code=404,
-            detail=f"Provider '{provider_name}' not found"
+            status_code=404, detail=f"Provider '{provider_name}' not found"
         )
 
     mgr = get_config_manager()
@@ -335,8 +353,7 @@ async def update_provider(
 @router.post("/{provider_name}/validate", response_model=ValidationResult)
 async def validate_provider(
     provider_name: str,
-    api_key: str = "",
-    api_base: str = "",
+    request: ProviderValidationRequest,
 ):
     """验证 Provider 连接（验证成功后会保存 API Key）
 
@@ -350,14 +367,16 @@ async def validate_provider(
     """
     if provider_name not in PROVIDER_CLASSES:
         raise HTTPException(
-            status_code=404,
-            detail=f"Provider '{provider_name}' not found"
+            status_code=404, detail=f"Provider '{provider_name}' not found"
         )
 
     mgr = get_config_manager()
     cls = PROVIDER_CLASSES[provider_name]
 
     # 优先使用提供的 API Key，否则使用存储的
+    api_key = request.api_key or ""
+    api_base = request.api_base or ""
+
     if not api_key:
         api_key = mgr.get_api_key(provider_name)
     if not api_base:
@@ -397,7 +416,7 @@ async def list_supported_models():
     for name, cls in PROVIDER_CLASSES.items():
         try:
             instance = cls(api_key="dummy")
-            if hasattr(instance, 'DEFAULT_MODELS'):
+            if hasattr(instance, "DEFAULT_MODELS"):
                 models.extend(instance.DEFAULT_MODELS.values())
         except Exception:
             pass

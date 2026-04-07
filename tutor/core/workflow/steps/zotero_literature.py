@@ -226,7 +226,7 @@ class ZoteroLiteratureStep(WorkflowStep):
         if abstract := data.get("abstractNote"):
             lines.append(f"Abstract: {abstract}")
         if tags := data.get("tags"):
-            lines.append(f"Tags: {', '.join(t.get("tag", "") for t in tags)}")
+            lines.append(f"Tags: {', '.join(t.get('tag', '') for t in tags)}")
         if doi := data.get("DOI"):
             lines.append(f"DOI: {doi}")
         if date := data.get("date"):
