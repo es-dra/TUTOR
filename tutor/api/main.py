@@ -385,62 +385,6 @@ def create_app() -> "FastAPI":
 
     run_storage = RunStorage()
 
-    # --- Routes ---
-
-    @app.get("/health", tags=["system"])
-    async def health_check():
-        """健康检查（兼容性）"""
-        payload = {
-            "status": "ok",
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        }
-        # 兼容旧版(top-level status)和新版(envelope)
-        return {"success": True, "data": payload, **payload}
-
-    @app.get("/health/live", tags=["system"])
-    async def health_live():
-        """Liveness Probe - 应用是否存活"""
-        payload = {
-            "status": "alive",
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        }
-        # 兼容旧版(top-level status)和新版(envelope)
-        return {"success": True, "data": payload, **payload}
-
-    @app.get("/health/ready", tags=["system"])
-    async def health_ready():
-        """Readiness Probe - 应用是否就绪（依赖检查）"""
-        checks = {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
-        }
-
-        # 检查磁盘空间
-        try:
-            import shutil
-            from pathlib import Path
-
-            storage_path = Path.cwd()
-            usage = shutil.disk_usage(storage_path)
-            used_percent = (usage.used / usage.total * 100) if usage.total else 100
-            checks["disk_ok"] = used_percent < 95
-            checks["disk_usage_percent"] = round(used_percent, 2)
-        except Exception as e:
-            checks["disk_ok"] = False
-            checks["disk_error"] = str(e)
-
-        # 检查配置
-        checks["config_loaded"] = True
-
-        # 检查限流器
-        checks["rate_limiter_ok"] = True
-
-        # 总体就绪状态
-        is_ready = checks.get("disk_ok", False) and checks.get("config_loaded", False)
-        checks["status"] = "ready" if is_ready else "not_ready"
-
-        status_code = 200 if is_ready else 503
-        return JSONResponse(content=checks, status_code=status_code)
-
     # --- Legacy compatibility routes ---
     @app.post("/run", response_model=RunResponse, tags=["legacy"])
     async def start_run_legacy(request: RunRequest):
@@ -575,6 +519,11 @@ def create_app() -> "FastAPI":
         )
 
     # --- API v1 Routes ---
+    # Health check endpoints
+    from tutor.api.routes.health import router as health_router
+
+    app.include_router(health_router)
+
     # 工作流管理端点
     from tutor.api.routes.workflows import router as workflows_router
 
