@@ -3,7 +3,7 @@ import pytest
 
 
 @pytest.mark.unit
-def test_api_response_has_all_required_fields():
+def test_api_response_has_all_required_fields() -> None:
     """Verify ApiResponse has success, data, error, meta fields."""
     from tutor.api.models import ApiResponse
 
@@ -24,7 +24,7 @@ def test_api_response_has_all_required_fields():
 
 
 @pytest.mark.unit
-def test_paginated_response_has_required_fields():
+def test_paginated_response_has_required_fields() -> None:
     """Verify PaginatedResponse has required pagination fields."""
     from tutor.api.models import PaginatedResponse
 
