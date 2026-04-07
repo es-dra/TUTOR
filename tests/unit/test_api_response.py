@@ -1,4 +1,4 @@
-"""Verify .env.example contains only placeholders, not real API keys."""
+"""Tests for ApiResponse and PaginatedResponse models."""
 import pytest
 
 
