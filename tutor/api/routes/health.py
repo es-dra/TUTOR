@@ -1,5 +1,6 @@
 """Health check endpoints."""
 
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -39,7 +40,6 @@ async def health_ready() -> JSONResponse:
 
     # Check disk space
     try:
-        import shutil
         storage_path = Path.cwd()
         usage = shutil.disk_usage(storage_path)
         used_percent = (usage.used / usage.total * 100) if usage.total else 100
