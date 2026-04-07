@@ -1187,7 +1187,7 @@ Example: Innovation: 0.85, Feasibility: 0.65
             try:
                 score = float(match.group(1))
                 return max(0, min(1, score))
-            except:
+            except ValueError:
                 pass
         return 0.5
 
@@ -1491,10 +1491,10 @@ Be objective and thorough.
             try:
                 score = float(match.group(1))
                 return max(0, min(1, score))
-            except:
+            except ValueError:
                 pass
         return 0.5
-    
+
     def _generate_summary(self, evaluated_ideas: List[Dict]) -> str:
         """生成评估总结"""
         if not evaluated_ideas:

@@ -46,8 +46,11 @@ print("\n" + "=" * 80)
 print("📝 模型API配置")
 print("=" * 80)
 
-# 用户提供的API密钥
-deepseek_api_key = "sk-d66cf9782040462e8d52d1c957e6c9b9"
+# 用户提供的API密钥 - 从环境变量读取
+deepseek_api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+if not deepseek_api_key:
+    print("\n⚠️ 警告: DEEPSEEK_API_KEY 环境变量未设置")
+    print("   请设置: export DEEPSEEK_API_KEY=your-api-key")
 
 # 检查API配置
 print("检测到DeepSeek API密钥，将使用单模型模式")
@@ -482,8 +485,8 @@ The section should be comprehensive, well-structured, and include relevant detai
     
     content = model_gateway.chat(
         "writer",
-        [{"role": "user", "content": section_prompt}
-    ])
+        [{"role": "user", "content": section_prompt}]
+    )
     draft_sections[section] = {
         "content": content,
         "level": 2
@@ -496,8 +499,8 @@ for section, section_data in draft_sections.items():
     print(f"  润色中: {section}...")
     polished = model_gateway.chat(
         "writer",
-        [{"role": "user", "content": f"Polish this academic text for grammar, clarity, and style: {section_data['content']}"}
-    ])
+        [{"role": "user", "content": f"Polish this academic text for grammar, clarity, and style: {section_data['content']}"}]
+    )
     polished_sections[section] = {
         "content": polished,
         "level": 2
@@ -591,8 +594,8 @@ print("\n📝 步骤 1: 单角色初审")
 # 使用工作流上下文的完整论文进行评审
 initial_review = model_gateway.chat(
     "reviewer",
-    [{"role": "user", "content": f"Review this research paper: {workflow_context['complete_paper']}"
-])
+    [{"role": "user", "content": f"Review this research paper: {workflow_context['complete_paper']}"}]
+)
 print("初审结果:")
 print(initial_review)
 
@@ -611,8 +614,8 @@ if use_double_models:
 else:
     advocate_arg = model_gateway.chat(
         "debate_a",
-        [{"role": "user", "content": f"You are an advocate. Argue in favor of this paper: {workflow_context['complete_paper']}"
-    ])
+        [{"role": "user", "content": f"You are an advocate. Argue in favor of this paper: {workflow_context['complete_paper']}"}]
+    )
 print(advocate_arg)
 
 print("\n🎯 Critic (批评者):")
@@ -627,22 +630,22 @@ if use_double_models:
 else:
     critic_arg = model_gateway.chat(
         "debate_b",
-        [{"role": "user", "content": f"You are a critic. Critique this paper: {workflow_context['complete_paper']}"
-    ])
+        [{"role": "user", "content": f"You are a critic. Critique this paper: {workflow_context['complete_paper']}"}]
+    )
 print(critic_arg)
 
 print("\n🤝 Synthesizer (综合者):")
 synthesizer_conclusion = model_gateway.chat(
     "synthesizer",
-    [{"role": "user", "content": f"You are a synthesizer. Synthesize the debate between advocate and critic:\n\nAdvocate: {advocate_arg}\n\nCritic: {critic_arg}"}
-])
+    [{"role": "user", "content": f"You are a synthesizer. Synthesize the debate between advocate and critic:\n\nAdvocate: {advocate_arg}\n\nCritic: {critic_arg}"}]
+)
 print(synthesizer_conclusion)
 
 print("\n✅ 步骤 3: 最终评审报告")
 final_review = model_gateway.chat(
     "reviewer",
-    [{"role": "user", "content": f"Provide a final review report for this paper based on the debate:\n\nPaper: {complete_paper}\n\nAdvocate: {advocate_arg}\n\nCritic: {critic_arg}\n\nSynthesizer: {synthesizer_conclusion}"}
-])
+    [{"role": "user", "content": f"Provide a final review report for this paper based on the debate:\n\nPaper: {complete_paper}\n\nAdvocate: {advocate_arg}\n\nCritic: {critic_arg}\n\nSynthesizer: {synthesizer_conclusion}"}]
+)
 print("最终评审结果:")
 print(final_review)
 

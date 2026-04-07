@@ -408,9 +408,9 @@ class FigureGenerationStep(WorkflowStep):
             # 尝试使用默认字体
             try:
                 draw.text((10, 10), text, fill="#333333")
-            except Exception:
-                # 如果默认字体失败，使用更简单的方法
-                draw.text((10, 10), text, fill="#333333")
+            except Exception as e:
+                # 如果默认字体失败，尝试备用方案
+                logger.warning(f"Failed to draw text with default font: {e}")
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             return buf.getvalue()
