@@ -34,15 +34,17 @@ class TestHealthEndpoints:
         response = self.client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "ok"
-        assert "timestamp" in data
+        assert data["success"] is True
+        assert data["data"]["status"] == "ok"
+        assert "timestamp" in data["data"]
 
     def test_health_live(self):
         """测试 /health/live 端点"""
         response = self.client.get("/health/live")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "alive"
+        assert data["success"] is True
+        assert data["data"]["status"] == "alive"
 
     def test_health_ready(self):
         """测试 /health/ready 端点"""
