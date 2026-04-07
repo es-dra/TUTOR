@@ -1,17 +1,16 @@
 """Security middleware for TUTOR API.
 
 Provides:
-- Helmet-style security headers
 - CORS configuration
-- API key validation helpers
+- Security headers (via custom middleware)
 """
 
 import os
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 def configure_cors(
-    app,
+    app: Any,
     allowed_origins: Optional[List[str]] = None,
     allow_credentials: bool = True,
     allow_methods: Optional[List[str]] = None,
@@ -50,7 +49,7 @@ def configure_cors(
     )
 
 
-def configure_security(app) -> None:
+def configure_security(app: Any) -> None:
     """Configure security middleware for the FastAPI app.
 
     This includes:

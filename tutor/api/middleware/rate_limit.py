@@ -5,11 +5,10 @@ with automatic fallback to in-memory rate limiting.
 """
 
 import logging
+import os
 import time
 from collections import defaultdict
 from typing import Dict, List, Optional
-
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,6 @@ class RedisRateLimiter:
 
     def _is_allowed_redis(self, client_id: str) -> bool:
         """Check rate limit using Redis (sliding window)."""
-        import redis
         try:
             key = f"rate_limit:{client_id}"
             now = time.time()
