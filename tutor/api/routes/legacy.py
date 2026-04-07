@@ -7,11 +7,9 @@ New code should use the /api/v1/* endpoints instead.
 import asyncio
 import uuid
 import warnings
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from tutor.api.main import (
     RunRequest,
@@ -192,6 +190,11 @@ async def list_approvals_legacy():
 @router.get("/approvals/pending", deprecated=True)
 async def list_pending_approvals_legacy():
     """List pending approvals (deprecated)."""
+    warnings.warn(
+        "Legacy /approvals/pending endpoint is deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from tutor.core.workflow.approval import approval_manager as am
     approvals = [req.to_dict() for req in am.list_pending()]
     return {"total": len(approvals), "approvals": approvals}
@@ -200,6 +203,11 @@ async def list_pending_approvals_legacy():
 @router.get("/approvals/{approval_id}", deprecated=True)
 async def get_approval_legacy(approval_id: str):
     """Get approval (deprecated)."""
+    warnings.warn(
+        "Legacy /approvals/{approval_id} endpoint is deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from tutor.core.workflow.approval import approval_manager as am
     req = am.get_request(approval_id)
     if not req:
@@ -210,6 +218,11 @@ async def get_approval_legacy(approval_id: str):
 @router.post("/approvals/{approval_id}/approve", deprecated=True)
 async def approve_approval_legacy(approval_id: str):
     """Approve request (deprecated)."""
+    warnings.warn(
+        "Legacy /approvals/{approval_id}/approve endpoint is deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from tutor.core.workflow.approval import approval_manager as am
     ok = am.approve(approval_id, by="user", comment="")
     if not ok:
@@ -222,6 +235,11 @@ async def approve_approval_legacy(approval_id: str):
 @router.post("/approvals/{approval_id}/reject", deprecated=True)
 async def reject_approval_legacy(approval_id: str):
     """Reject approval (deprecated)."""
+    warnings.warn(
+        "Legacy /approvals/{approval_id}/reject endpoint is deprecated.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from tutor.core.workflow.approval import approval_manager as am
     ok = am.reject(approval_id, by="user", comment="")
     if not ok:
