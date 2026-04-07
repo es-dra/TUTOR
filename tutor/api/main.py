@@ -7,6 +7,7 @@ FastAPI应用，提供：
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -181,13 +182,21 @@ async def api_key_auth_middleware(request: Request, call_next):
     if not expected_key:
         return await call_next(request)
 
-    # Validate API key
-    if not api_key or api_key != expected_key:
+    # Validate API key using timing-safe comparison
+    if not api_key:
         return JSONResponse(
             status_code=401,
             content={
                 "error": "Unauthorized",
-                "detail": "Missing or invalid X-API-Key header",
+                "detail": "Missing X-API-Key header",
+            },
+        )
+    if not hmac.compare_digest(api_key, expected_key):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": "Unauthorized",
+                "detail": "Invalid X-API-Key header",
             },
         )
 
