@@ -1,7 +1,7 @@
 import pytest
 
 @pytest.mark.unit
-def test_api_key_comparison_is_timing_safe():
+def test_api_key_comparison_is_timing_safe() -> None:
     """Verify API key comparison uses hmac.compare_digest."""
     import inspect
     from tutor.api.main import api_key_auth_middleware
