@@ -385,129 +385,6 @@ def create_app() -> "FastAPI":
 
     run_storage = RunStorage()
 
-    # --- Legacy compatibility routes ---
-    @app.post("/run", response_model=RunResponse, tags=["legacy"])
-    async def start_run_legacy(request: RunRequest):
-        valid_types = WorkflowType.all()
-        if request.workflow_type not in valid_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid workflow_type '{request.workflow_type}'. Must be one of: {valid_types}",
-            )
-
-        run_id = str(uuid.uuid4())
-        run_storage.create_run(
-            run_id=run_id,
-            workflow_type=request.workflow_type,
-            params=request.params,
-            config=request.config,
-        )
-        asyncio.create_task(
-            _execute_workflow(run_id, request, run_storage, broadcaster)
-        )
-        return RunResponse(
-            run_id=run_id,
-            status="pending",
-            workflow_type=request.workflow_type,
-            message=f"Workflow '{request.workflow_type}' started. Run ID: {run_id}",
-        )
-
-    @app.get("/runs/{run_id}", tags=["legacy"])
-    async def get_run_legacy(run_id: str):
-        run = run_storage.get_run(run_id)
-        if not run:
-            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-        return success_response(data=RunStatusResponse(**run).model_dump())
-
-    @app.get("/runs", tags=["legacy"])
-    async def list_runs_legacy(
-        status: Optional[str] = None,
-        workflow_type: Optional[str] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ):
-        result = run_storage.list_runs(
-            status=status,
-            workflow_type=workflow_type,
-            limit=limit,
-            offset=offset,
-        )
-        return paginated_response(
-            items=result.get("runs", []),
-            total=result.get("total", 0),
-            limit=limit,
-            offset=offset,
-        )
-
-    @app.get("/stats", tags=["legacy"])
-    async def get_stats_legacy():
-        return success_response(data=run_storage.get_stats())
-
-    @app.delete("/runs/{run_id}", tags=["legacy"])
-    async def delete_run_legacy(run_id: str):
-        success = run_storage.delete_run(run_id)
-        if not success:
-            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-        return success_response(data={"run_id": run_id, "status": "deleted"})
-
-    @app.post("/runs/{run_id}/cancel", tags=["legacy"])
-    async def cancel_run_legacy(run_id: str):
-        run = run_storage.get_run(run_id)
-        if not run:
-            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
-        if run["status"] not in ["pending", "running"]:
-            raise HTTPException(
-                status_code=400, detail=f"Cannot cancel run in status '{run['status']}'"
-            )
-        broadcaster.signal_cancel(run_id)
-        run_storage.update_status(run_id, "cancelled")
-        return success_response(data={"run_id": run_id, "cancelled": True})
-
-    @app.get("/approvals", tags=["legacy"])
-    async def list_approvals_legacy():
-        from tutor.core.workflow.approval import approval_manager as am
-
-        approvals = [req.to_dict() for req in am.list_all()]
-        return {"total": len(approvals), "approvals": approvals}
-
-    @app.get("/approvals/pending", tags=["legacy"])
-    async def list_pending_approvals_legacy():
-        from tutor.core.workflow.approval import approval_manager as am
-
-        approvals = [req.to_dict() for req in am.list_pending()]
-        return {"total": len(approvals), "approvals": approvals}
-
-    @app.get("/approvals/{approval_id}", tags=["legacy"])
-    async def get_approval_legacy(approval_id: str):
-        from tutor.core.workflow.approval import approval_manager as am
-
-        req = am.get_request(approval_id)
-        if not req:
-            raise HTTPException(status_code=404, detail="Approval not found")
-        return req.to_dict()
-
-    @app.post("/approvals/{approval_id}/approve", tags=["legacy"])
-    async def approve_approval_legacy(approval_id: str):
-        from tutor.core.workflow.approval import approval_manager as am
-
-        ok = am.approve(approval_id, by="user", comment="")
-        if not ok:
-            raise HTTPException(
-                status_code=400, detail="Approval not found or not pending"
-            )
-        return {"status": "approved", "approval_id": approval_id}
-
-    @app.post("/approvals/{approval_id}/reject", tags=["legacy"])
-    async def reject_approval_legacy(approval_id: str):
-        from tutor.core.workflow.approval import approval_manager as am
-
-        ok = am.reject(approval_id, by="user", comment="")
-        if not ok:
-            raise HTTPException(
-                status_code=400, detail="Approval not found or not pending"
-            )
-        return {"status": "rejected", "approval_id": approval_id}
-
     @app.get("/metrics", tags=["system"])
     async def prometheus_metrics():
         """Prometheus metrics endpoint"""
@@ -523,6 +400,11 @@ def create_app() -> "FastAPI":
     from tutor.api.routes.health import router as health_router
 
     app.include_router(health_router)
+
+    # Legacy compatibility routes (deprecated)
+    from tutor.api.routes.legacy import router as legacy_router
+
+    app.include_router(legacy_router)
 
     # 工作流管理端点
     from tutor.api.routes.workflows import router as workflows_router
