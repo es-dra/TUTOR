@@ -381,9 +381,9 @@ def create_app() -> "FastAPI":
     app.middleware("http")(api_key_auth_middleware)
 
     # --- Database storage ---
-    from tutor.core.storage.workflow_runs import RunStorage
+    from tutor.core.storage import get_repository
 
-    run_storage = RunStorage()
+    run_storage = get_repository()
 
     @app.get("/metrics", tags=["system"])
     async def prometheus_metrics():

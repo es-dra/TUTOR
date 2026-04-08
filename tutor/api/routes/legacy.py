@@ -29,8 +29,8 @@ router = APIRouter(tags=["legacy"])
 
 def get_run_storage():
     """Dependency to get run storage instance."""
-    from tutor.core.storage.workflow_runs import RunStorage
-    return RunStorage()
+    from tutor.core.storage import get_repository
+    return get_repository()
 
 
 def get_broadcaster():
