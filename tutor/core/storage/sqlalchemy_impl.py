@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import create_engine, func
+from sqlalchemy import and_, create_engine, func, or_
 from sqlalchemy.orm import Session, sessionmaker
 
 from tutor.core.storage.models import Base, WorkflowRun as SQLWorkflowRun, RunEvent as SQLRunEvent
@@ -46,18 +46,43 @@ class SQLAlchemyWorkflowRunRepository(WorkflowRunRepository):
 
     def _to_dict(self, run: SQLWorkflowRun) -> Dict[str, Any]:
         """Convert SQLAlchemy model to dictionary."""
+        try:
+            params = json.loads(run.params) if run.params else {}
+        except json.JSONDecodeError:
+            params = {}
+            logger.warning(f"Failed to decode params for run {run.run_id}")
+        try:
+            config = json.loads(run.config) if run.config else {}
+        except json.JSONDecodeError:
+            config = {}
+            logger.warning(f"Failed to decode config for run {run.run_id}")
+        try:
+            result = json.loads(run.result) if run.result else None
+        except json.JSONDecodeError:
+            result = None
+            logger.warning(f"Failed to decode result for run {run.run_id}")
+        try:
+            usage = json.loads(run.usage) if run.usage else None
+        except json.JSONDecodeError:
+            usage = None
+            logger.warning(f"Failed to decode usage for run {run.run_id}")
+        try:
+            tags = json.loads(run.tags) if run.tags else []
+        except json.JSONDecodeError:
+            tags = []
+            logger.warning(f"Failed to decode tags for run {run.run_id}")
         return {
             "run_id": run.run_id,
             "workflow_type": run.workflow_type,
             "status": run.status,
-            "params": json.loads(run.params) if run.params else {},
-            "config": json.loads(run.config) if run.config else {},
+            "params": params,
+            "config": config,
             "started_at": run.started_at.isoformat() + "Z" if run.started_at else None,
             "completed_at": run.completed_at.isoformat() + "Z" if run.completed_at else None,
-            "result": json.loads(run.result) if run.result else None,
+            "result": result,
             "error": run.error,
-            "usage": json.loads(run.usage) if run.usage else None,
-            "tags": json.loads(run.tags) if run.tags else [],
+            "usage": usage,
+            "tags": tags,
             "created_at": run.created_at.isoformat() + "Z" if run.created_at else None,
             "updated_at": run.updated_at.isoformat() + "Z" if run.updated_at else None,
         }
@@ -82,6 +107,7 @@ class SQLAlchemyWorkflowRunRepository(WorkflowRunRepository):
                 tags="[]",
                 created_at=now,
                 updated_at=now,
+                started_at=now,
             )
             session.add(run)
             session.commit()
@@ -196,13 +222,13 @@ class SQLAlchemyWorkflowRunRepository(WorkflowRunRepository):
         """List workflow runs by tags."""
         session = self._get_session()
         try:
-            # Build LIKE conditions for each tag
+            # Build LIKE conditions for each tag - match JSON array format ["tag1","tag2"]
             conditions = [SQLWorkflowRun.tags.like(f'%"{tag}"%') for tag in tags]
 
             if match_all:
-                query = session.query(SQLWorkflowRun).filter(*conditions)
+                query = session.query(SQLWorkflowRun).filter(and_(*conditions))
             else:
-                query = session.query(SQLWorkflowRun).filter(*conditions)
+                query = session.query(SQLWorkflowRun).filter(or_(*conditions))
 
             runs = query.order_by(SQLWorkflowRun.created_at.desc()).offset(offset).limit(limit).all()
             return [self._to_dict(run) for run in runs]
