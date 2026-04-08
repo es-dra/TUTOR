@@ -1,20 +1,23 @@
-"""TUTOR Storage Manager - 数据存储管理
+"""Storage package for TUTOR.
 
-提供统一的数据持久化接口，支持：
-- SQLite元数据存储
-- JSON文件系统存储
-- 抽象存储层（便于扩展）
+Provides repository interface and implementations for workflow run storage.
 """
 
-from .base import StorageBackend, StorageError
-from .sqlite_backend import SQLiteBackend
-from .file_backend import FileBackend
-from .manager import StorageManager
+# Repository Protocol
+from tutor.core.storage.repository import WorkflowRunRepository
+
+# Factory
+from tutor.core.storage.factory import get_repository, reset_repository
+
+# Legacy storage (for backward compatibility)
+from tutor.core.storage.workflow_runs import RunStorage
 
 __all__ = [
-    'StorageBackend',
-    'StorageError',
-    'SQLiteBackend',
-    'FileBackend',
-    'StorageManager',
+    # Repository interface
+    "WorkflowRunRepository",
+    # Factory
+    "get_repository",
+    "reset_repository",
+    # Legacy (for compatibility)
+    "RunStorage",
 ]
