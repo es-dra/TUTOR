@@ -1,5 +1,6 @@
 """Tests for LegacyWorkflowRunRepository wrapper."""
 import pytest
+import uuid
 
 
 @pytest.mark.unit
@@ -17,9 +18,10 @@ def test_legacy_wrapper_creates_run():
     """Test creating a run via legacy wrapper."""
     from tutor.core.storage.legacy_impl import LegacyWorkflowRunRepository
 
-    wrapper = LegacyWorkflowRunRepository()
-    result = wrapper.create_run("run-1", "idea")
+    wrapper = LegacyWorkflowRunRepository(db_path=":memory:")
+    run_id = f"test-run-{uuid.uuid4().hex[:8]}"
+    result = wrapper.create_run(run_id, "idea")
 
-    assert result["run_id"] == "run-1"
+    assert result["run_id"] == run_id
     assert result["workflow_type"] == "idea"
     assert result["status"] == "pending"
