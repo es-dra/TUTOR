@@ -4,9 +4,10 @@ This module defines the WorkflowRunRepository Protocol (interface)
 that all storage implementations must follow.
 """
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 
+@runtime_checkable
 class WorkflowRunRepository(Protocol):
     """Protocol for workflow run storage operations.
 
