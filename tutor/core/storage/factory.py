@@ -6,6 +6,7 @@ Supports switching between implementations (SQLAlchemy, legacy).
 
 import logging
 import os
+import threading
 from typing import Optional
 
 from tutor.core.storage.repository import WorkflowRunRepository
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Module-level cache for repository instance
 _impl_cache: Optional[WorkflowRunRepository] = None
+_lock = threading.Lock()
 
 
 def get_repository() -> WorkflowRunRepository:
@@ -35,17 +37,20 @@ def get_repository() -> WorkflowRunRepository:
     if _impl_cache is not None:
         return _impl_cache
 
-    impl_type = os.environ.get("TUTOR_STORAGE_IMPL", "sqlalchemy").lower()
+    with _lock:
+        # Double-check after acquiring lock
+        if _impl_cache is None:
+            impl_type = os.environ.get("TUTOR_STORAGE_IMPL", "sqlalchemy").lower()
 
-    if impl_type == "legacy":
-        from tutor.core.storage.legacy_impl import LegacyWorkflowRunRepository
-        logger.info("Using legacy SQLite repository implementation")
-        _impl_cache = LegacyWorkflowRunRepository()
-    else:
-        from tutor.core.storage.sqlalchemy_impl import SQLAlchemyWorkflowRunRepository
-        logger.info("Using SQLAlchemy repository implementation")
-        db_url = os.environ.get("DATABASE_URL", "sqlite:///data/tutor_runs.db")
-        _impl_cache = SQLAlchemyWorkflowRunRepository(db_url=db_url)
+            if impl_type == "legacy":
+                from tutor.core.storage.legacy_impl import LegacyWorkflowRunRepository
+                logger.info("Using legacy SQLite repository implementation")
+                _impl_cache = LegacyWorkflowRunRepository()
+            else:
+                from tutor.core.storage.sqlalchemy_impl import SQLAlchemyWorkflowRunRepository
+                logger.info("Using SQLAlchemy repository implementation")
+                db_url = os.environ.get("DATABASE_URL", "sqlite:///data/tutor_runs.db")
+                _impl_cache = SQLAlchemyWorkflowRunRepository(db_url=db_url)
 
     return _impl_cache
 
